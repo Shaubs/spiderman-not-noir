@@ -4,6 +4,12 @@
 
 This document outlines the approach for detecting custom hand gestures using MediaPipe hand landmarks.
 
+**Related Decisions:**
+- [ADR-001: Rule-Based vs ML](decisions/001-rule-based-vs-ml.md)
+- [ADR-002: Random Forest vs Neural Network](decisions/002-random-forest-vs-neural-network.md)
+- [ADR-003: State Machine for Gesture Sequence](decisions/003-state-machine-for-gesture-sequence.md)
+- [ADR-004: Upside-Down Palm Requirement](decisions/004-upside-down-palm-requirement.md)
+
 ---
 
 ## Current Setup
