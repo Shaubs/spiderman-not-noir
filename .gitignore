@@ -1,0 +1,24 @@
+# Create .gitignore
+cat > .gitignore << 'EOF'
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# ML Models (large files)
+*.task
+
+# Snapshots and data
+snapshots/
+gesture_data/
+
+# OS files
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+EOF
