@@ -1,11 +1,19 @@
 """
 Gesture State Machine for detecting gesture sequences across video frames.
 
-Implements temporal gesture detection by tracking state transitions:
-- State 0: Looking for gesture
-- State 1: Gesture detected, recording position
-- State 2: Upward motion detected (armed)
-- State 3: Downward motion detected (triggered!)
+Implements temporal gesture detection with simplified trigger mechanics (ADR-009):
+
+Trigger Conditions (ANY of these will fire):
+1. Rapid Toggle: Detection toggles DETECTED↔LOOKING N times within window
+2. Armed State: Hand moves UP while gesture is held → immediate trigger
+3. Sustained Hold: DETECTED state maintained for X seconds
+
+States:
+- LOOKING: No Spider-Man hand detected
+- DETECTED: Spider-Man hand detected, monitoring for triggers
+- TRIGGERED: Web fired (auto-resets after cooldown)
+
+All timing values are configurable via config.py
 """
 
 from enum import Enum, auto
@@ -17,41 +25,56 @@ import time
 class GestureState(Enum):
     """States for gesture sequence detection."""
     LOOKING = auto()      # Waiting for gesture
-    DETECTED = auto()     # Gesture found, recording position
-    ARMED = auto()        # Upward motion detected
+    DETECTED = auto()     # Gesture found, monitoring triggers
     TRIGGERED = auto()    # Gesture sequence complete!
 
 
 @dataclass
 class StateConfig:
-    """Configuration for state machine thresholds."""
-    upward_threshold: float = 0.08      # Normalized Y movement up (decrease in Y)
-    downward_threshold: float = 0.05    # Normalized Y movement down (increase in Y)
-    timeout_seconds: float = 1.0        # Seconds before state resets
-    cooldown_seconds: float = 0.5       # Seconds after trigger before accepting new gesture
+    """Configuration for state machine thresholds. 
+    
+    Note: These are defaults. The actual values come from config.py via GameConfig.
+    """
+    # Rapid toggle trigger
+    toggle_count_threshold: int = 2          # Number of toggles to trigger
+    toggle_window_seconds: float = 0.5       # Time window for counting toggles
+    
+    # Armed trigger (upward motion)
+    upward_threshold: float = 0.04           # Normalized Y movement up
+    
+    # Sustained hold trigger
+    sustained_hold_seconds: float = 0.4      # Seconds to hold for trigger
+    
+    # Cooldown
+    cooldown_seconds: float = 0.3            # Seconds after trigger before accepting new gesture
 
 
 class GestureStateMachine:
     """
-    Tracks gesture sequences across video frames.
+    Tracks gesture sequences with simplified trigger mechanics.
     
-    Detects the pattern:
-    1. Spider-Man hand appears (static pose)
-    2. Hand moves UP
-    3. Hand moves DOWN → TRIGGER!
+    Three ways to trigger (any one fires the web):
+    1. Quick flicking motion (rapid toggle between detected/looking)
+    2. Move hand UP while holding gesture (armed motion)
+    3. Hold steady for 1+ second (sustained detection)
     """
     
     def __init__(self, config: Optional[StateConfig] = None):
         self.config = config or StateConfig()
         self.state = GestureState.LOOKING
-        self.initial_wrist_y: Optional[float] = None
-        self.armed_wrist_y: Optional[float] = None
         self.state_enter_time: float = time.time()
         self.last_trigger_time: float = 0
         self.callbacks: List[Callable[[], None]] = []
         
+        # For rapid toggle detection
+        self.toggle_timestamps: List[float] = []
+        
+        # For armed (upward motion) detection
+        self.initial_wrist_y: Optional[float] = None
+        
         # For debugging/visualization
         self.state_history: List[tuple] = []
+        self.last_trigger_reason: str = ""
     
     def on_trigger(self, callback: Callable[[], None]):
         """Register a callback for when gesture is triggered."""
@@ -64,21 +87,45 @@ class GestureStateMachine:
         self.state_enter_time = time.time()
         self.state_history.append((time.time(), old_state, new_state))
         
+        # Track state toggles for rapid toggle detection
+        if (old_state == GestureState.DETECTED and new_state == GestureState.LOOKING) or \
+           (old_state == GestureState.LOOKING and new_state == GestureState.DETECTED):
+            self.toggle_timestamps.append(time.time())
+            # Clean old timestamps
+            cutoff = time.time() - self.config.toggle_window_seconds
+            self.toggle_timestamps = [t for t in self.toggle_timestamps if t > cutoff]
+        
+        # Debug output
+        print(f"DEBUG: State transition: {old_state.name} → {new_state.name}")
+        
         # Keep history bounded
         if len(self.state_history) > 100:
             self.state_history = self.state_history[-50:]
     
-    def _check_timeout(self) -> bool:
-        """Check if current state has timed out."""
-        if self.state == GestureState.LOOKING:
-            return False  # LOOKING state never times out
-        
-        elapsed = time.time() - self.state_enter_time
-        return elapsed > self.config.timeout_seconds
-    
     def _in_cooldown(self) -> bool:
         """Check if we're in cooldown period after trigger."""
         return time.time() - self.last_trigger_time < self.config.cooldown_seconds
+    
+    def _check_rapid_toggle_trigger(self) -> bool:
+        """Check if rapid toggling should trigger."""
+        cutoff = time.time() - self.config.toggle_window_seconds
+        recent_toggles = [t for t in self.toggle_timestamps if t > cutoff]
+        return len(recent_toggles) >= self.config.toggle_count_threshold
+    
+    def _check_sustained_hold_trigger(self) -> bool:
+        """Check if sustained hold should trigger."""
+        if self.state != GestureState.DETECTED:
+            return False
+        time_in_state = time.time() - self.state_enter_time
+        return time_in_state >= self.config.sustained_hold_seconds
+    
+    def _check_armed_trigger(self, wrist_y: Optional[float]) -> bool:
+        """Check if upward motion should trigger."""
+        if wrist_y is None or self.initial_wrist_y is None:
+            return False
+        # Y decreases when moving up in image coordinates
+        y_delta = self.initial_wrist_y - wrist_y
+        return y_delta > self.config.upward_threshold
     
     def update(self, gesture_detected: bool, wrist_y: Optional[float] = None) -> GestureState:
         """
@@ -91,14 +138,20 @@ class GestureStateMachine:
         Returns:
             Current state after update
         """
-        # Check timeout - reset to LOOKING if timed out
-        if self._check_timeout():
-            self._change_state(GestureState.LOOKING)
-            self.initial_wrist_y = None
-            self.armed_wrist_y = None
-        
         # Handle cooldown period
         if self._in_cooldown():
+            if self.state == GestureState.TRIGGERED:
+                self._change_state(GestureState.LOOKING)
+                self.initial_wrist_y = None
+                self.toggle_timestamps.clear()
+            return self.state
+        
+        # Check for rapid toggle trigger (can fire from any state)
+        if self._check_rapid_toggle_trigger():
+            self.last_trigger_reason = "RAPID_TOGGLE"
+            print(f"DEBUG: Trigger fired! Reason: {self.last_trigger_reason}")
+            self._change_state(GestureState.TRIGGERED)
+            self._fire_trigger()
             return self.state
         
         # State machine logic
@@ -109,34 +162,28 @@ class GestureStateMachine:
         
         elif self.state == GestureState.DETECTED:
             if not gesture_detected:
-                # Lost gesture, reset
+                # Lost gesture - go back to looking (toggle counted above)
                 self._change_state(GestureState.LOOKING)
                 self.initial_wrist_y = None
-            elif wrist_y is not None and self.initial_wrist_y is not None:
-                # Check for upward movement (Y decreases when moving up)
-                y_delta = self.initial_wrist_y - wrist_y
-                if y_delta > self.config.upward_threshold:
-                    self._change_state(GestureState.ARMED)
-                    self.armed_wrist_y = wrist_y
-        
-        elif self.state == GestureState.ARMED:
-            if not gesture_detected:
-                # Lost gesture, reset
-                self._change_state(GestureState.LOOKING)
-                self.initial_wrist_y = None
-                self.armed_wrist_y = None
-            elif wrist_y is not None and self.armed_wrist_y is not None:
-                # Check for downward movement (Y increases when moving down)
-                y_delta = wrist_y - self.armed_wrist_y
-                if y_delta > self.config.downward_threshold:
+            else:
+                # Check sustained hold trigger
+                if self._check_sustained_hold_trigger():
+                    self.last_trigger_reason = "SUSTAINED_HOLD"
+                    print(f"DEBUG: Trigger fired! Reason: {self.last_trigger_reason}")
+                    self._change_state(GestureState.TRIGGERED)
+                    self._fire_trigger()
+                # Check armed (upward motion) trigger
+                elif self._check_armed_trigger(wrist_y):
+                    self.last_trigger_reason = "ARMED_MOTION"
+                    print(f"DEBUG: Trigger fired! Reason: {self.last_trigger_reason}")
                     self._change_state(GestureState.TRIGGERED)
                     self._fire_trigger()
         
         elif self.state == GestureState.TRIGGERED:
-            # Immediately reset after trigger
+            # Reset after trigger (cooldown handled above)
             self._change_state(GestureState.LOOKING)
             self.initial_wrist_y = None
-            self.armed_wrist_y = None
+            self.toggle_timestamps.clear()
         
         return self.state
     
@@ -150,17 +197,23 @@ class GestureStateMachine:
         """Reset state machine to initial state."""
         self.state = GestureState.LOOKING
         self.initial_wrist_y = None
-        self.armed_wrist_y = None
         self.state_enter_time = time.time()
+        self.toggle_timestamps.clear()
+        self.last_trigger_reason = ""
     
     def get_state_info(self) -> dict:
         """Get current state information for debugging/display."""
+        cutoff = time.time() - self.config.toggle_window_seconds
+        recent_toggles = len([t for t in self.toggle_timestamps if t > cutoff])
+        
         return {
             "state": self.state.name,
             "initial_wrist_y": self.initial_wrist_y,
-            "armed_wrist_y": self.armed_wrist_y,
             "time_in_state": time.time() - self.state_enter_time,
-            "in_cooldown": self._in_cooldown()
+            "in_cooldown": self._in_cooldown(),
+            "toggle_count": recent_toggles,
+            "last_trigger_reason": self.last_trigger_reason,
+            "sustained_progress": min(1.0, (time.time() - self.state_enter_time) / self.config.sustained_hold_seconds) if self.state == GestureState.DETECTED else 0,
         }
     
     def get_state_color(self) -> tuple:
@@ -168,7 +221,6 @@ class GestureStateMachine:
         colors = {
             GestureState.LOOKING: (128, 128, 128),    # Gray
             GestureState.DETECTED: (0, 255, 255),     # Yellow
-            GestureState.ARMED: (0, 165, 255),        # Orange
             GestureState.TRIGGERED: (0, 255, 0),      # Green
         }
         return colors.get(self.state, (255, 255, 255))
