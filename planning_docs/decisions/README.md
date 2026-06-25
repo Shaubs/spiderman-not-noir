@@ -20,12 +20,13 @@ An ADR is a document that captures an important architectural decision along wit
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
 | [001](001-rule-based-vs-ml.md) | Rule-Based vs ML for Gesture Detection | 2026-06-25 | Accepted |
-| [002](002-random-forest-vs-neural-network.md) | Random Forest vs Neural Network | 2026-06-25 | Accepted |
-| [003](003-state-machine-for-gesture-sequence.md) | State Machine for Gesture Sequence | 2026-06-25 | Proposed |
+| [002](002-random-forest-vs-neural-network.md) | Random Forest vs Neural Network | 2026-06-25 | Superseded by 007 |
+| [003](003-state-machine-for-gesture-sequence.md) | State Machine for Gesture Sequence | 2026-06-25 | Accepted |
 | [004](004-upside-down-palm-requirement.md) | Upside-Down Palm Orientation | 2026-06-25 | Accepted |
-| [005](005-pose-detection-for-arm-orientation.md) | Pose Detection for Arm Orientation | 2026-06-25 | Proposed |
-| [006](006-data-collection-strategy.md) | Data Collection Strategy for RF Training | 2026-06-25 | Accepted |
-| [007](007-random-forest-results-and-ffnn.md) | Random Forest Results → Feed Forward NN | 2026-06-25 | Accepted |
+| [005](005-pose-detection-for-arm-orientation.md) | Pose Detection for Arm Orientation | 2026-06-25 | Accepted |
+| [006](006-data-collection-strategy.md) | Data Collection Strategy for ML Training | 2026-06-25 | Accepted |
+| [007](007-random-forest-results-and-ffnn.md) | Random Forest Results → Switch to FFNN | 2026-06-25 | Accepted |
+| [008](008-ffnn-implementation-results.md) | FFNN Implementation Results (99.4% F1) | 2026-06-25 | Accepted |
 
 ## Template for New ADRs
 
