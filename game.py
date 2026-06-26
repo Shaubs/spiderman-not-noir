@@ -19,6 +19,7 @@ Gesture:
 import cv2
 import os
 import time
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -26,6 +27,7 @@ from typing import Optional
 from hand_tracker import HandTracker
 from gesture_state_machine import GestureStateMachine, StateConfig, GestureState
 from ffnn_classifier.run_classifier import FFNNClassifier
+from multi_gesture_classifier.run_classifier import MultiGestureClassifier
 from symbiote import SymbioteManager
 from symbiote_config import SymbioteConfig
 from depth_config import ACTIVE_DEPTH_CONFIG
@@ -62,6 +64,17 @@ def main():
         model_path=Path(__file__).parent / "ffnn_classifier" / "model.pt",
         threshold=ACTIVE_CONFIG.detection_threshold
     )
+    
+    # Multi-gesture classifier for Dr. Strange detection
+    try:
+        multi_classifier = MultiGestureClassifier(
+            model_path=Path(__file__).parent / "multi_gesture_classifier" / "multi_gesture_model.pt"
+        )
+        dr_strange_enabled = True
+    except FileNotFoundError:
+        print("⚠️ Multi-gesture model not found. Dr. Strange detection disabled.")
+        multi_classifier = None
+        dr_strange_enabled = False
     
     # Symbiote config with smaller end size
     symbiote_config = SymbioteConfig(
@@ -101,6 +114,20 @@ def main():
     last_hand_landmarks = None
     last_pose_landmarks = None
     last_handedness = None
+    
+    # Dr. Strange detection state
+    dr_strange_active = False
+    dr_strange_display_until = 0
+    dr_strange_hold_start = None  # When Dr. Strange gesture started
+    dr_strange_magic_active = False  # Magic circle active after 1.5s hold
+    dr_strange_hand_landmarks = None  # Store landmarks for magic circle
+    dr_strange_circle_angle = 0.0  # Rotation angle for magic circle
+    dr_strange_path = []  # List of (x, y, timestamp) points tracing the path
+    DR_STRANGE_PATH_MAX_POINTS = 150  # Maximum points to keep in path
+    DR_STRANGE_PATH_FADE_TIME = 5.0  # Seconds before path points fade (increased for more time to close loop)
+    DR_STRANGE_LOOP_THRESHOLD = 40  # Distance in pixels to consider loop closed
+    DR_STRANGE_MIN_LOOP_POINTS = 20  # Minimum points needed before loop detection
+    dr_strange_completed_portals = []  # List of completed portal circles [(center_x, center_y, radius, creation_time), ...]
     
     def on_web_shoot():
         """Callback when web is shot."""
@@ -198,11 +225,13 @@ def main():
             
             # Detect Spider-Man gesture using FFNN classifier
             spiderman_detected = False
+            dr_strange_detected = False
             wrist_y = None
             confidence = 0.0
             
             if hand_results.hand_landmarks:
                 for idx, hand_landmarks in enumerate(hand_results.hand_landmarks):
+                    # Check Spider-Man gesture first
                     is_spiderman, conf = classifier.predict(hand_landmarks)
                     if is_spiderman:
                         spiderman_detected = True
@@ -215,6 +244,39 @@ def main():
                         if hand_results.handedness and idx < len(hand_results.handedness):
                             last_handedness = hand_results.handedness[idx][0].category_name
                         break
+                    
+                    # Check Dr. Strange gesture if not Spider-Man
+                    if dr_strange_enabled and multi_classifier:
+                        is_dr_strange, dr_conf = multi_classifier.predict_dr_strange(hand_landmarks)
+                        if is_dr_strange and dr_conf > 0.7:
+                            dr_strange_detected = True
+                            dr_strange_hand_landmarks = hand_landmarks  # Store for magic circle
+                            
+                            # Track hold time
+                            if dr_strange_hold_start is None:
+                                dr_strange_hold_start = current_time
+                                dr_strange_active = True
+                                dr_strange_display_until = current_time + 2.0
+                                print("🔮 Dr. Strange move activated!")
+                            
+                            # Check if held for 1.5 seconds
+                            hold_duration = current_time - dr_strange_hold_start
+                            if hold_duration >= 1.5 and not dr_strange_magic_active:
+                                dr_strange_magic_active = True
+                                print("✨ Magic circle activated!")
+                        else:
+                            # Reset hold if gesture lost
+                            dr_strange_hold_start = None
+                            dr_strange_magic_active = False
+                            dr_strange_hand_landmarks = None
+                            dr_strange_path = []  # Clear path
+            
+            # Reset Dr. Strange state if no hands detected
+            if not hand_results.hand_landmarks or not dr_strange_detected:
+                dr_strange_hold_start = None
+                dr_strange_magic_active = False
+                dr_strange_hand_landmarks = None
+                dr_strange_path = []  # Clear path
             
             # Update state machine
             current_state = state_machine.update(spiderman_detected, wrist_y)
@@ -294,6 +356,219 @@ def main():
             if spiderman_detected:
                 cv2.putText(frame, f"SPIDEY {confidence:.0%}", (w - 120, 100),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            
+            # Dr. Strange activation display
+            if dr_strange_active and current_time < dr_strange_display_until:
+                # Orange glow text for Dr. Strange
+                text = "DR. STRANGE MOVE ACTIVATED!"
+                text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, 1.2, 2)[0]
+                text_x = (w - text_size[0]) // 2
+                text_y = 150
+                # Glow effect
+                cv2.putText(frame, text, (text_x, text_y),
+                            cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 100, 255), 4)  # Orange glow
+                cv2.putText(frame, text, (text_x, text_y),
+                            cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 165, 255), 2)  # Orange core
+            elif current_time >= dr_strange_display_until:
+                dr_strange_active = False
+            
+            # Dr. Strange Magic Circle (after 1.5s hold)
+            if dr_strange_magic_active and dr_strange_hand_landmarks is not None:
+                # Update rotation angle
+                dr_strange_circle_angle += 0.08  # Rotate speed
+                
+                # Get landmarks 16 (ring finger tip) and 20 (pinky tip)
+                lm16 = dr_strange_hand_landmarks[16]  # Ring finger tip
+                lm20 = dr_strange_hand_landmarks[20]  # Pinky tip
+                
+                # Convert to pixel coordinates
+                x16 = int(lm16.x * w)
+                y16 = int(lm16.y * h)
+                x20 = int(lm20.x * w)
+                y20 = int(lm20.y * h)
+                
+                # Calculate center point between landmarks 16 and 20
+                center_x = (x16 + x20) // 2
+                center_y = (y16 + y20) // 2
+                
+                # Add current position to path
+                dr_strange_path.append((center_x, center_y, current_time))
+                
+                # Check if loop is closed (current position near start position)
+                if len(dr_strange_path) >= DR_STRANGE_MIN_LOOP_POINTS:
+                    start_x, start_y, _ = dr_strange_path[0]
+                    distance_to_start = math.sqrt((center_x - start_x)**2 + (center_y - start_y)**2)
+                    
+                    if distance_to_start < DR_STRANGE_LOOP_THRESHOLD:
+                        # Loop completed! Calculate the bounding circle
+                        all_x = [p[0] for p in dr_strange_path]
+                        all_y = [p[1] for p in dr_strange_path]
+                        portal_center_x = (min(all_x) + max(all_x)) // 2
+                        portal_center_y = (min(all_y) + max(all_y)) // 2
+                        portal_radius = max(max(all_x) - min(all_x), max(all_y) - min(all_y)) // 2
+                        portal_radius = max(30, portal_radius)  # Minimum radius of 30px
+                        
+                        # Add to completed portals
+                        dr_strange_completed_portals.append((portal_center_x, portal_center_y, portal_radius, current_time))
+                        
+                        # Clear the path to start drawing a new one
+                        dr_strange_path = []
+                
+                # Limit path length
+                if len(dr_strange_path) > DR_STRANGE_PATH_MAX_POINTS:
+                    dr_strange_path = dr_strange_path[-DR_STRANGE_PATH_MAX_POINTS:]
+                
+                # Fire/orange color palette (BGR format)
+                FIRE_COLORS = [
+                    (0, 50, 139),    # Dark red/brown
+                    (0, 69, 190),    # Deep orange
+                    (0, 100, 220),   # Orange
+                    (0, 140, 255),   # Bright orange
+                    (30, 180, 255),  # Yellow-orange
+                    (50, 200, 255),  # Light orange/yellow
+                ]
+                
+                # Draw the traced path with fading fire effect
+                if len(dr_strange_path) > 1:
+                    for i in range(1, len(dr_strange_path)):
+                        px1, py1, t1 = dr_strange_path[i - 1]
+                        px2, py2, t2 = dr_strange_path[i]
+                        
+                        # Calculate age and fade
+                        age = current_time - t1
+                        fade = max(0, 1.0 - (age / DR_STRANGE_PATH_FADE_TIME))
+                        
+                        if fade > 0:
+                            # Color based on position in path (newer = brighter)
+                            color_idx = min(5, int((i / len(dr_strange_path)) * 6))
+                            color = FIRE_COLORS[color_idx]
+                            
+                            # Fade the color
+                            faded_color = tuple(int(c * fade) for c in color)
+                            
+                            # Line thickness based on age (newer = thicker)
+                            thickness = max(1, int(3 * fade))
+                            
+                            cv2.line(frame, (px1, py1), (px2, py2), faded_color, thickness)
+                    
+                    # Draw fire particles along the path
+                    for i, (px, py, t) in enumerate(dr_strange_path[::3]):  # Every 3rd point
+                        age = current_time - t
+                        fade = max(0, 1.0 - (age / DR_STRANGE_PATH_FADE_TIME))
+                        if fade > 0.3:
+                            # Flickering particles
+                            offset_x = int(3 * math.sin(dr_strange_circle_angle * 3 + i))
+                            offset_y = int(3 * math.cos(dr_strange_circle_angle * 3 + i))
+                            color = FIRE_COLORS[(i + int(dr_strange_circle_angle * 2)) % len(FIRE_COLORS)]
+                            faded_color = tuple(int(c * fade) for c in color)
+                            cv2.circle(frame, (px + offset_x, py + offset_y), 2, faded_color, -1)
+                    
+                    # Draw start point indicator (where to close the loop)
+                    if len(dr_strange_path) >= DR_STRANGE_MIN_LOOP_POINTS:
+                        start_x, start_y, _ = dr_strange_path[0]
+                        distance_to_start = math.sqrt((center_x - start_x)**2 + (center_y - start_y)**2)
+                        
+                        # Pulsing indicator at start point
+                        pulse_size = int(8 + 4 * math.sin(dr_strange_circle_angle * 4))
+                        
+                        # Change color based on proximity (green when close)
+                        if distance_to_start < DR_STRANGE_LOOP_THRESHOLD * 2:
+                            # Getting close - yellow/green pulse
+                            indicator_color = (0, 255, 200)  # Cyan/green
+                            cv2.circle(frame, (start_x, start_y), pulse_size + 5, (0, 255, 100), 2)
+                        else:
+                            # Show where to return
+                            indicator_color = FIRE_COLORS[5]
+                        
+                        cv2.circle(frame, (start_x, start_y), pulse_size, indicator_color, 2)
+                        cv2.circle(frame, (start_x, start_y), 3, indicator_color, -1)
+                
+                # Main magic circle (radius 10px minimum, can grow)
+                base_radius = 10
+                pulse = 2 * math.sin(dr_strange_circle_angle * 2)  # Pulsing effect
+                main_radius = int(base_radius + pulse)
+                
+                # Draw outer glow rings
+                for i, radius_offset in enumerate([12, 10, 8, 6]):
+                    color = FIRE_COLORS[i % len(FIRE_COLORS)]
+                    cv2.circle(frame, (center_x, center_y), main_radius + radius_offset, color, 1)
+                
+                # Draw main circle with fire gradient
+                cv2.circle(frame, (center_x, center_y), main_radius + 4, FIRE_COLORS[2], 2)
+                cv2.circle(frame, (center_x, center_y), main_radius + 2, FIRE_COLORS[4], 2)
+                cv2.circle(frame, (center_x, center_y), main_radius, FIRE_COLORS[5], 2)
+                
+                # Draw revolving fire particles around the center
+                num_particles = 8
+                for i in range(num_particles):
+                    angle = dr_strange_circle_angle + (i * 2 * math.pi / num_particles)
+                    # Particles at different radii
+                    particle_radius = main_radius + 6 + (i % 3) * 3
+                    particle_x = int(center_x + particle_radius * math.cos(angle))
+                    particle_y = int(center_y + particle_radius * math.sin(angle))
+                    color = FIRE_COLORS[(i + int(dr_strange_circle_angle * 2)) % len(FIRE_COLORS)]
+                    cv2.circle(frame, (particle_x, particle_y), 3, color, -1)
+                
+                # Inner revolving sparks (opposite direction)
+                for i in range(6):
+                    angle = -dr_strange_circle_angle * 1.5 + (i * 2 * math.pi / 6)
+                    spark_x = int(center_x + (main_radius - 2) * math.cos(angle))
+                    spark_y = int(center_y + (main_radius - 2) * math.sin(angle))
+                    color = FIRE_COLORS[5]  # Brightest
+                    cv2.circle(frame, (spark_x, spark_y), 2, color, -1)
+                
+                # Draw connecting lines to landmarks with gradient
+                cv2.line(frame, (center_x, center_y), (x16, y16), FIRE_COLORS[3], 1)
+                cv2.line(frame, (center_x, center_y), (x20, y20), FIRE_COLORS[3], 1)
+                
+                # Small fire dots at landmarks
+                cv2.circle(frame, (x16, y16), 4, FIRE_COLORS[4], -1)
+                cv2.circle(frame, (x20, y20), 4, FIRE_COLORS[4], -1)
+            
+            # Draw completed portals (persist on screen)
+            FIRE_COLORS = [
+                (0, 50, 139),    # Dark red/brown
+                (0, 69, 190),    # Deep orange
+                (0, 100, 220),   # Orange
+                (0, 140, 255),   # Bright orange
+                (30, 180, 255),  # Yellow-orange
+                (50, 200, 255),  # Light orange/yellow
+            ]
+            
+            for portal in dr_strange_completed_portals:
+                px, py, pr, pt = portal
+                portal_age = current_time - pt
+                
+                # Portal animation angle (each portal rotates independently)
+                portal_angle = dr_strange_circle_angle + portal_age * 2
+                
+                # Outer glow rings
+                for i, radius_offset in enumerate([8, 5, 2]):
+                    color = FIRE_COLORS[(i + 2) % len(FIRE_COLORS)]
+                    cv2.circle(frame, (px, py), pr + radius_offset, color, 2)
+                
+                # Main portal ring
+                cv2.circle(frame, (px, py), pr, FIRE_COLORS[5], 3)
+                cv2.circle(frame, (px, py), pr - 3, FIRE_COLORS[4], 2)
+                
+                # Rotating particles around completed portal
+                num_particles = 12
+                for i in range(num_particles):
+                    angle = portal_angle + (i * 2 * math.pi / num_particles)
+                    particle_x = int(px + pr * math.cos(angle))
+                    particle_y = int(py + pr * math.sin(angle))
+                    color = FIRE_COLORS[(i + int(portal_angle * 2)) % len(FIRE_COLORS)]
+                    cv2.circle(frame, (particle_x, particle_y), 4, color, -1)
+                
+                # Inner rotating sparks
+                for i in range(8):
+                    angle = -portal_angle * 1.5 + (i * 2 * math.pi / 8)
+                    spark_x = int(px + (pr * 0.7) * math.cos(angle))
+                    spark_y = int(py + (pr * 0.7) * math.sin(angle))
+                    cv2.circle(frame, (spark_x, spark_y), 3, FIRE_COLORS[5], -1)
+                
+                # Center glow
+                cv2.circle(frame, (px, py), 5, FIRE_COLORS[5], -1)
         
         elif game_screen.state == "intro":
             # Show camera with hand overlay during intro

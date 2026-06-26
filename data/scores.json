@@ -58,5 +58,45 @@
     "duration_seconds": 50.6023371219635,
     "timestamp": 1782497592.1282198,
     "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 18,
+    "balls_destroyed": 6,
+    "hits_taken": 9,
+    "final_score": 60,
+    "duration_seconds": 32.73690867424011,
+    "timestamp": 1782498696.513261,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 2,
+    "balls_destroyed": 0,
+    "hits_taken": 12,
+    "final_score": 0,
+    "duration_seconds": 26.409919023513794,
+    "timestamp": 1782498983.8213902,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 1,
+    "balls_destroyed": 0,
+    "hits_taken": 15,
+    "final_score": 0,
+    "duration_seconds": 32.7293381690979,
+    "timestamp": 1782499342.970036,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 0,
+    "balls_destroyed": 0,
+    "hits_taken": 10,
+    "final_score": 0,
+    "duration_seconds": 22.809147119522095,
+    "timestamp": 1782499503.176073,
+    "difficulty": "normal"
   }
 ]

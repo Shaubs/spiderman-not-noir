@@ -32,3 +32,8 @@ tauri_poc/src-tauri/gen/
 
 # Cargo lock (optional - some prefer to commit this)
 # tauri_poc/src-tauri/Cargo.lock
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
