@@ -75,6 +75,9 @@ class GestureStateMachine:
         # For debugging/visualization
         self.state_history: List[tuple] = []
         self.last_trigger_reason: str = ""
+        
+        # Flag for game.py to know when trigger just fired
+        self._just_triggered: bool = False
     
     def on_trigger(self, callback: Callable[[], None]):
         """Register a callback for when gesture is triggered."""
@@ -190,6 +193,7 @@ class GestureStateMachine:
     def _fire_trigger(self):
         """Execute trigger callbacks."""
         self.last_trigger_time = time.time()
+        self._just_triggered = True  # Set flag for external code
         for callback in self.callbacks:
             callback()
     
@@ -200,6 +204,7 @@ class GestureStateMachine:
         self.state_enter_time = time.time()
         self.toggle_timestamps.clear()
         self.last_trigger_reason = ""
+        self._just_triggered = False
     
     def get_state_info(self) -> dict:
         """Get current state information for debugging/display."""

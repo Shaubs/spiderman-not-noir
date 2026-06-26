@@ -136,6 +136,10 @@ class SymbioteBall:
 class SymbioteManager:
     """Manages symbiote balls - spawning, collision, rendering."""
     
+    # BFS Infection spread settings (rotten oranges style)
+    INFECTION_SPREAD_INTERVAL = 0.5  # seconds between spread iterations
+    INFECTION_SPREAD_AMOUNT = 15     # pixels to spread per iteration
+    
     def __init__(self, config: SymbioteConfig = ACTIVE_SYMBIOTE_CONFIG,
                  depth_config: DepthConfig = ACTIVE_DEPTH_CONFIG):
         self.config = config
@@ -152,6 +156,9 @@ class SymbioteManager:
         self._cached_grayscale_mask: Optional[np.ndarray] = None
         self._cached_frame_size: Optional[tuple] = None
         self._mask_dirty: bool = True  # Flag to rebuild mask
+        
+        # BFS infection spread timing
+        self._last_infection_spread: float = time.time()
         
     def spawn_ball(self, frame_width: int, frame_height: int, 
                    pose_landmarks: Optional[dict] = None):
@@ -324,10 +331,29 @@ class SymbioteManager:
         # Remove expired balls
         self.active_balls = [b for b in self.active_balls if not b.is_expired]
         
-        # Grayscale regions are permanent (symbiote infection stays)
-        # No cleanup needed - regions persist until game reset
+        # BFS Infection spread - expand grayscale regions every 0.5 seconds
+        if current_time - self._last_infection_spread >= self.INFECTION_SPREAD_INTERVAL:
+            self._spread_infection()
+            self._last_infection_spread = current_time
         
         return hit_balls
+    
+    def _spread_infection(self):
+        """
+        BFS-style infection spread (Rotten Oranges algorithm).
+        
+        Each grayscale region expands outward by INFECTION_SPREAD_AMOUNT pixels,
+        simulating the symbiote infection spreading across the frame.
+        """
+        if not self.grayscale_regions:
+            return
+        
+        # Expand each region's radius
+        for region in self.grayscale_regions:
+            region['radius'] += self.INFECTION_SPREAD_AMOUNT
+        
+        # Mark mask as dirty so it gets rebuilt
+        self._mask_dirty = True
     
     def render_grayscale_effect(self, frame: np.ndarray) -> np.ndarray:
         """
@@ -491,6 +517,7 @@ class SymbioteManager:
         self.hit_locations.clear()
         self.grayscale_regions.clear()
         self.last_spawn_time = time.time()
+        self._last_infection_spread = time.time()
         # Clear cached mask
         self._cached_grayscale_mask = None
         self._cached_frame_size = None
@@ -504,3 +531,31 @@ class SymbioteManager:
             'active_balls': len(self.active_balls),
             'total_hit_locations': len(self.hit_locations),
         }
+    
+    def get_grayscale_coverage(self, frame_width: int, frame_height: int) -> float:
+        """
+        Calculate the percentage of the frame covered by grayscale regions.
+        
+        Returns:
+            Float from 0.0 to 1.0 representing coverage percentage.
+        """
+        if not self.grayscale_regions:
+            return 0.0
+        
+        # If we have a cached mask, count the True pixels
+        if self._cached_grayscale_mask is not None:
+            h, w = self._cached_grayscale_mask.shape
+            covered_pixels = np.sum(self._cached_grayscale_mask)
+            total_pixels = h * w
+            return min(1.0, covered_pixels / total_pixels)
+        
+        # Fallback: estimate from circle areas (may overcount overlaps)
+        total_pixels = frame_width * frame_height
+        covered_pixels = 0
+        
+        for region in self.grayscale_regions:
+            r = region['radius']
+            # Circle area = pi * r^2
+            covered_pixels += int(3.14159 * r * r)
+        
+        return min(1.0, covered_pixels / total_pixels)
