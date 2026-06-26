@@ -27,6 +27,8 @@ An ADR is a document that captures an important architectural decision along wit
 | [006](006-data-collection-strategy.md) | Data Collection Strategy for ML Training | 2026-06-25 | Accepted |
 | [007](007-random-forest-results-and-ffnn.md) | Random Forest Results → Switch to FFNN | 2026-06-25 | Accepted |
 | [008](008-ffnn-implementation-results.md) | FFNN Implementation Results (99.4% F1) | 2026-06-25 | Accepted |
+| [009](009-simplified-trigger-mechanics.md) | Simplified Trigger Mechanics Based on Real-World Testing | 2026-06-25 | Accepted |
+| [010](010-depth-perception-and-collision-mechanics.md) | Depth Perception and Collision Mechanics | 2026-06-26 | Accepted |
 
 ## Template for New ADRs
 
