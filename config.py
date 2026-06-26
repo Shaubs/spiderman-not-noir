@@ -62,29 +62,10 @@ class GameConfig:
     
     # Show landmark numbers on hand
     show_landmark_numbers: bool = False
-    
-    # === SYMBIOTE BALLS (ENEMY) ===
-    
-    # Spawn rate (seconds between spawns)
-    symbiote_spawn_interval: float = 2.0
-    
-    # How long a ball takes to reach the player (seconds)
-    symbiote_travel_time: float = 3.0
-    
-    # Starting size (pixels) - ball appears small in distance
-    symbiote_start_size: int = 15
-    
-    # Final size (pixels) - ball is big when it hits player
-    symbiote_end_size: int = 80
-    
-    # Maximum balls on screen at once
-    symbiote_max_active: int = 5
-    
-    # Hit detection radius multiplier (for web collision)
-    symbiote_hit_radius_multiplier: float = 1.2
 
 
 # === PRESETS ===
+# Note: Symbiote settings are in symbiote_config.py
 
 FAST_CONFIG = GameConfig(
     toggle_count_threshold=2,
@@ -94,9 +75,6 @@ FAST_CONFIG = GameConfig(
     cooldown_seconds=0.2,
     detection_threshold=0.65,
     web_duration=0.4,
-    symbiote_spawn_interval=1.5,
-    symbiote_travel_time=2.5,
-    symbiote_max_active=6,
 )
 
 NORMAL_CONFIG = GameConfig(
@@ -107,9 +85,6 @@ NORMAL_CONFIG = GameConfig(
     cooldown_seconds=0.3,
     detection_threshold=0.7,
     web_duration=0.5,
-    symbiote_spawn_interval=2.0,
-    symbiote_travel_time=3.0,
-    symbiote_max_active=5,
 )
 
 SLOW_CONFIG = GameConfig(
@@ -120,9 +95,6 @@ SLOW_CONFIG = GameConfig(
     cooldown_seconds=0.8,
     detection_threshold=0.75,
     web_duration=0.8,
-    symbiote_spawn_interval=3.0,
-    symbiote_travel_time=4.0,
-    symbiote_max_active=4,
 )
 
 # === ACTIVE CONFIG ===

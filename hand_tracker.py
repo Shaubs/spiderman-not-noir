@@ -10,13 +10,25 @@ from typing import Optional, List
 
 @dataclass
 class PoseLandmarks:
-    """Stores relevant pose landmarks for arm orientation."""
+    """Stores relevant pose landmarks for body tracking."""
+    # Face
+    nose: Optional[tuple] = None            # Landmark 0
+    left_eye: Optional[tuple] = None        # Landmark 2
+    right_eye: Optional[tuple] = None       # Landmark 5
+    left_ear: Optional[tuple] = None        # Landmark 7
+    right_ear: Optional[tuple] = None       # Landmark 8
+    # Upper body
     left_shoulder: Optional[tuple] = None   # Landmark 11
     right_shoulder: Optional[tuple] = None  # Landmark 12
     left_elbow: Optional[tuple] = None      # Landmark 13
     right_elbow: Optional[tuple] = None     # Landmark 14
     left_wrist: Optional[tuple] = None      # Landmark 15
     right_wrist: Optional[tuple] = None     # Landmark 16
+    # Lower body
+    left_hip: Optional[tuple] = None        # Landmark 23
+    right_hip: Optional[tuple] = None       # Landmark 24
+    left_knee: Optional[tuple] = None       # Landmark 25
+    right_knee: Optional[tuple] = None      # Landmark 26
 
 
 class HandTracker:
@@ -33,12 +45,24 @@ class HandTracker:
     
     # Pose landmarks we care about
     POSE_LANDMARK_INDICES = {
+        # Face
+        'nose': 0,
+        'left_eye': 2,
+        'right_eye': 5,
+        'left_ear': 7,
+        'right_ear': 8,
+        # Upper body
         'left_shoulder': 11,
         'right_shoulder': 12,
         'left_elbow': 13,
         'right_elbow': 14,
         'left_wrist': 15,
-        'right_wrist': 16
+        'right_wrist': 16,
+        # Lower body
+        'left_hip': 23,
+        'right_hip': 24,
+        'left_knee': 25,
+        'right_knee': 26,
     }
     
     def __init__(self, model_path="hand_landmarker.task", 
@@ -164,28 +188,31 @@ class HandTracker:
         return frame
     
     def draw_pose_landmarks(self, frame, pose: PoseLandmarks, show_labels=True):
-        """Draw pose landmarks (shoulders, elbows, wrists) on the frame."""
+        """Draw pose landmarks (face, shoulders, elbows, wrists, hips, knees) on the frame."""
         if pose is None:
             return frame
         
         h, w, _ = frame.shape
         
         # Colors
+        FACE_COLOR = (255, 200, 200)    # Light pink
         SHOULDER_COLOR = (255, 165, 0)  # Orange
         ELBOW_COLOR = (0, 255, 255)     # Yellow
         WRIST_COLOR = (255, 0, 255)     # Magenta
+        HIP_COLOR = (100, 255, 100)     # Light green
+        KNEE_COLOR = (100, 100, 255)    # Light blue
         LINE_COLOR = (200, 200, 200)    # Gray
         
-        # Draw connections: shoulder -> elbow -> wrist
-        connections = [
+        # Draw arm connections: shoulder -> elbow -> wrist
+        arm_connections = [
             ('left_shoulder', 'left_elbow', 'left_wrist'),
             ('right_shoulder', 'right_elbow', 'right_wrist')
         ]
         
-        for shoulder_name, elbow_name, wrist_name in connections:
-            shoulder = getattr(pose, shoulder_name)
-            elbow = getattr(pose, elbow_name)
-            wrist = getattr(pose, wrist_name)
+        for shoulder_name, elbow_name, wrist_name in arm_connections:
+            shoulder = getattr(pose, shoulder_name, None)
+            elbow = getattr(pose, elbow_name, None)
+            wrist = getattr(pose, wrist_name, None)
             
             points = []
             for pt in [shoulder, elbow, wrist]:
@@ -200,18 +227,68 @@ class HandTracker:
             if points[1] and points[2]:
                 cv2.line(frame, points[1], points[2], LINE_COLOR, 2)
         
-        # Draw landmark points
+        # Draw body connections: shoulder -> hip -> knee
+        body_connections = [
+            ('left_shoulder', 'left_hip', 'left_knee'),
+            ('right_shoulder', 'right_hip', 'right_knee')
+        ]
+        
+        for shoulder_name, hip_name, knee_name in body_connections:
+            shoulder = getattr(pose, shoulder_name, None)
+            hip = getattr(pose, hip_name, None)
+            knee = getattr(pose, knee_name, None)
+            
+            points = []
+            for pt in [shoulder, hip, knee]:
+                if pt is not None:
+                    points.append((int(pt[0] * w), int(pt[1] * h)))
+                else:
+                    points.append(None)
+            
+            if points[0] and points[1]:
+                cv2.line(frame, points[0], points[1], LINE_COLOR, 2)
+            if points[1] and points[2]:
+                cv2.line(frame, points[1], points[2], LINE_COLOR, 2)
+        
+        # Connect shoulders and hips across body
+        left_shoulder = getattr(pose, 'left_shoulder', None)
+        right_shoulder = getattr(pose, 'right_shoulder', None)
+        left_hip = getattr(pose, 'left_hip', None)
+        right_hip = getattr(pose, 'right_hip', None)
+        
+        if left_shoulder and right_shoulder:
+            cv2.line(frame, 
+                     (int(left_shoulder[0] * w), int(left_shoulder[1] * h)),
+                     (int(right_shoulder[0] * w), int(right_shoulder[1] * h)),
+                     LINE_COLOR, 2)
+        if left_hip and right_hip:
+            cv2.line(frame,
+                     (int(left_hip[0] * w), int(left_hip[1] * h)),
+                     (int(right_hip[0] * w), int(right_hip[1] * h)),
+                     LINE_COLOR, 2)
+        
+        # Draw all landmark points
         landmarks_to_draw = [
+            # Face
+            ('nose', FACE_COLOR, 'NOSE'),
+            ('left_eye', FACE_COLOR, 'L_EYE'),
+            ('right_eye', FACE_COLOR, 'R_EYE'),
+            # Upper body
             ('left_shoulder', SHOULDER_COLOR, 'L_SH'),
             ('right_shoulder', SHOULDER_COLOR, 'R_SH'),
             ('left_elbow', ELBOW_COLOR, 'L_ELB'),
             ('right_elbow', ELBOW_COLOR, 'R_ELB'),
             ('left_wrist', WRIST_COLOR, 'L_WR'),
             ('right_wrist', WRIST_COLOR, 'R_WR'),
+            # Lower body
+            ('left_hip', HIP_COLOR, 'L_HIP'),
+            ('right_hip', HIP_COLOR, 'R_HIP'),
+            ('left_knee', KNEE_COLOR, 'L_KN'),
+            ('right_knee', KNEE_COLOR, 'R_KN'),
         ]
         
         for name, color, label in landmarks_to_draw:
-            pt = getattr(pose, name)
+            pt = getattr(pose, name, None)
             if pt is not None:
                 cx, cy = int(pt[0] * w), int(pt[1] * h)
                 cv2.circle(frame, (cx, cy), 8, color, -1)
@@ -220,7 +297,5 @@ class HandTracker:
                 if show_labels:
                     cv2.putText(frame, label, (cx + 12, cy - 5),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-        
-        return frame
         
         return frame
