@@ -176,7 +176,7 @@ class GameScreenManager:
         cv2.putText(frame, subtitle, (sub_x, 120),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.BLUE, 2)
         
-        # Story (left side)
+        # Story (left side - YELLOW for visibility)
         story_x = 50
         story_y = 180
         for line in self.STORY_LINES:
@@ -184,17 +184,18 @@ class GameScreenManager:
                 story_y += 15
             else:
                 cv2.putText(frame, line, (story_x, story_y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, self.WHITE, 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, self.YELLOW, 1)
                 story_y += 28
         
-        # Instructions (right side)
+        # Instructions (right side - RED headers, YELLOW details)
         inst_x = w // 2 + 50
         inst_y = 180
         for line in self.INSTRUCTIONS:
             if line == "":
                 inst_y += 15
             else:
-                color = self.YELLOW if line.startswith("HOW") else self.WHITE
+                # Headers in RED, details in YELLOW
+                color = self.RED if line.startswith("HOW") or line.startswith("1.") or line.startswith("2.") else self.YELLOW
                 cv2.putText(frame, line, (inst_x, inst_y),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1)
                 inst_y += 28
@@ -209,7 +210,7 @@ class GameScreenManager:
             start_size = cv2.getTextSize(start_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
             start_x = (w - start_size[0]) // 2
             cv2.putText(frame, start_text, (start_x, h - 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.GREEN, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.RED, 2)
         
         # Show high score if exists
         leaderboard = self.scoreboard.get_leaderboard(limit=1)
@@ -332,6 +333,7 @@ class GameScreenManager:
                 else:
                     stat_size = cv2.getTextSize(stat, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
                     stat_x = (w - stat_size[0]) // 2
+                    # FINAL SCORE in YELLOW, others in WHITE
                     color = self.YELLOW if "FINAL SCORE" in stat else self.WHITE
                     cv2.putText(frame, stat, (stat_x, stats_y),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
@@ -361,7 +363,7 @@ class GameScreenManager:
             restart_size = cv2.getTextSize(restart_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
             restart_x = (w - restart_size[0]) // 2
             cv2.putText(frame, restart_text, (restart_x, h - 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.GREEN, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.RED, 2)
         
         return frame
     

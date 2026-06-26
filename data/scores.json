@@ -38,5 +38,25 @@
     "duration_seconds": 28.402421951293945,
     "timestamp": 1782495738.001197,
     "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 105,
+    "balls_destroyed": 15,
+    "hits_taken": 7,
+    "final_score": 625,
+    "duration_seconds": 45.908560037612915,
+    "timestamp": 1782496673.784425,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 106,
+    "balls_destroyed": 17,
+    "hits_taken": 7,
+    "final_score": 820,
+    "duration_seconds": 50.6023371219635,
+    "timestamp": 1782497592.1282198,
+    "difficulty": "normal"
   }
 ]

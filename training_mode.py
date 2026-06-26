@@ -82,19 +82,19 @@ class TrainingMode:
         cv2.rectangle(overlay, (w // 2, 0), (w, h), self.DARK_OVERLAY, -1)
         frame = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
         
-        # Title
+        # Title (Spider-Man RED)
         title = "TRAINING MODE"
         title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_DUPLEX, 1.5, 3)[0]
         title_x = w // 2 + (w // 2 - title_size[0]) // 2
         cv2.putText(frame, title, (title_x, 60),
-                    cv2.FONT_HERSHEY_DUPLEX, 1.5, self.YELLOW, 3)
+                    cv2.FONT_HERSHEY_DUPLEX, 1.5, self.RED, 3)
         
-        # Subtitle
+        # Subtitle (YELLOW for visibility)
         subtitle = "Practice shooting webs!"
         sub_size = cv2.getTextSize(subtitle, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
         sub_x = w // 2 + (w // 2 - sub_size[0]) // 2
         cv2.putText(frame, subtitle, (sub_x, 95),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, self.WHITE, 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, self.YELLOW, 2)
         
         # Instructions
         inst_x = w // 2 + 30
@@ -104,12 +104,14 @@ class TrainingMode:
             if line == "":
                 inst_y += 10
             elif line.startswith("  "):
+                # Detail text in YELLOW for visibility
                 cv2.putText(frame, line, (inst_x, inst_y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.WHITE, 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.YELLOW, 1)
                 inst_y += 22
             else:
+                # Headers in RED
                 cv2.putText(frame, line, (inst_x, inst_y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.YELLOW, 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.RED, 1)
                 inst_y += 26
         
         # State indicator (larger, more visible)
@@ -121,29 +123,29 @@ class TrainingMode:
             cv2.putText(frame, f"DETECTED {confidence:.0%}", (w - 130, 110),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.GREEN, 1)
         
-        # Webs shot counter (big and prominent)
+        # Webs shot counter (big and prominent - RED for Spider-Man)
         webs_text = f"WEBS SHOT: {self.webs_shot}"
         webs_size = cv2.getTextSize(webs_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
         webs_x = w // 2 + (w // 2 - webs_size[0]) // 2
         cv2.putText(frame, webs_text, (webs_x, h - 130),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, self.GREEN, 3)
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, self.RED, 3)
         
         # Encouragement based on webs shot
         if self.webs_shot == 0:
             msg = "Try shooting your first web!"
-            msg_color = self.WHITE
+            msg_color = self.YELLOW
         elif self.webs_shot < 3:
             msg = "Great start! Keep practicing!"
-            msg_color = self.WHITE
+            msg_color = self.YELLOW
         elif self.webs_shot < 5:
             msg = "You're getting the hang of it!"
             msg_color = self.YELLOW
         elif self.webs_shot < 10:
             msg = "Excellent! You're a natural!"
-            msg_color = self.YELLOW
+            msg_color = self.RED
         else:
             msg = "READY FOR BATTLE!"
-            msg_color = self.GREEN
+            msg_color = self.RED
         
         msg_size = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
         msg_x = w // 2 + (w // 2 - msg_size[0]) // 2
@@ -160,7 +162,7 @@ class TrainingMode:
             prompt_size = cv2.getTextSize(prompt, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
             prompt_x = w // 2 + (w // 2 - prompt_size[0]) // 2
             cv2.putText(frame, prompt, (prompt_x, h - 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.GREEN, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.RED, 2)
         
         return frame
 

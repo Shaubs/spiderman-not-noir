@@ -138,7 +138,7 @@ class WebEffectRenderer:
         return frame
     
     def _render_web(self, frame: np.ndarray, web: WebShot):
-        """Render a 3-line web shot with glow effect (simple lines)."""
+        """Render a 3-line web shot with thin lines (no circles)."""
         progress = web.progress
         alpha = int(255 * web.opacity)
         
@@ -148,29 +148,20 @@ class WebEffectRenderer:
             (web.right_end_x, web.right_end_y),
         ]
         
-        # Calculate thickness that decreases with progress
-        glow_thickness = max(1, int(8 * (1 - progress * 0.5)))
-        core_thickness = max(1, int(4 * (1 - progress * 0.5)))
+        # Thin line thicknesses
+        glow_thickness = max(1, int(3 * (1 - progress * 0.5)))
+        core_thickness = max(1, int(2 * (1 - progress * 0.5)))
         
         for end_x, end_y in lines:
             current_end_x = int(web.start_x + (end_x - web.start_x) * progress)
             current_end_y = int(web.start_y + (end_y - web.start_y) * progress)
             
-            # Outer glow (blue tint)
+            # Outer glow (subtle blue tint)
             cv2.line(frame, (web.start_x, web.start_y), (current_end_x, current_end_y),
                      (alpha // 2, alpha // 2, alpha), glow_thickness)
             # Core line (white)
             cv2.line(frame, (web.start_x, web.start_y), (current_end_x, current_end_y),
                      (alpha, alpha, alpha), core_thickness)
             # Bright center
-            if core_thickness > 2:
-                cv2.line(frame, (web.start_x, web.start_y), (current_end_x, current_end_y),
-                         (255, 255, 255), max(1, core_thickness // 2))
-        
-        # Origin point with glow
-        cv2.circle(frame, (web.start_x, web.start_y), web.thickness + 4,
-                   (alpha // 3, alpha // 3, alpha // 2), -1)
-        cv2.circle(frame, (web.start_x, web.start_y), web.thickness + 2,
-                   (0, 0, alpha), -1)
-        cv2.circle(frame, (web.start_x - 2, web.start_y - 2), web.thickness // 2,
-                   (alpha, alpha, alpha), -1)
+            cv2.line(frame, (web.start_x, web.start_y), (current_end_x, current_end_y),
+                     (255, 255, 255), 1)
