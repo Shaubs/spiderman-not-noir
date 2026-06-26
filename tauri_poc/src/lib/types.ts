@@ -94,6 +94,15 @@ export interface WebShot {
   alpha: number;
 }
 
+// Infected zone (grayscale region from ball impact)
+export interface InfectedZone {
+  id: string;
+  x: number;      // Center X (normalized 0-1)
+  y: number;      // Center Y (normalized 0-1)
+  radius: number; // Radius (normalized)
+  createdAt: number;
+}
+
 // Game score
 export interface GameScore {
   websShot: number;
@@ -109,4 +118,5 @@ export interface GameState {
   score: GameScore;
   triggerState: 'LOOKING' | 'DETECTED' | 'TRIGGERED' | 'COOLDOWN';
   thwip: { x: number; y: number; createdAt: number } | null;
+  infectedZones: InfectedZone[];
 }

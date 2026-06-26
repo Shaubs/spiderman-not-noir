@@ -30,15 +30,27 @@ fn start_detector(app: AppHandle, state: State<PythonState>) -> Result<String, S
     
     *running = true;
     
-    // Get the path to the Python sidecar
-    let python_path = app
-        .path()
-        .resource_dir()
-        .map_err(|e| e.to_string())?
-        .join("python")
-        .join("detector.py");
+    // In dev mode, use the source path directly
+    // In production, this would be in the resource directory
+    let python_path = if cfg!(debug_assertions) {
+        // Dev mode - use source directory
+        std::env::current_dir()
+            .map_err(|e| e.to_string())?
+            .parent()
+            .ok_or("No parent dir")?
+            .join("python")
+            .join("detector.py")
+    } else {
+        // Production - use resource directory
+        app.path()
+            .resource_dir()
+            .map_err(|e| e.to_string())?
+            .join("python")
+            .join("detector.py")
+    };
     
     let python_path_str = python_path.to_string_lossy().to_string();
+    eprintln!("Starting Python detector: {}", python_path_str);
     
     // Clone app handle for the thread
     let app_clone = app.clone();
