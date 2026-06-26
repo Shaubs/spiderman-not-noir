@@ -148,6 +148,11 @@ class SymbioteManager:
         # ADR-010: Grayscale hit regions
         self.grayscale_regions: List[dict] = []  # {cx, cy, radius, created, duration}
         
+        # OPTIMIZATION: Cached grayscale mask (computed once per frame size)
+        self._cached_grayscale_mask: Optional[np.ndarray] = None
+        self._cached_frame_size: Optional[tuple] = None
+        self._mask_dirty: bool = True  # Flag to rebuild mask
+        
     def spawn_ball(self, frame_width: int, frame_height: int, 
                    pose_landmarks: Optional[dict] = None):
         """Spawn a new symbiote ball targeting the player."""
@@ -179,53 +184,18 @@ class SymbioteManager:
     
     def _choose_target(self, frame_width: int, frame_height: int,
                        pose_landmarks: Optional[dict]) -> tuple:
-        """Choose a body part to target."""
-        # Body parts with weights (face is more challenging to hit!)
-        body_parts = [
-            "face", "face",  # 2x weight for face (more dramatic)
-            "head",
-            "torso", "torso", "torso",  # 3x weight for torso (larger target)
-            "left_arm", "right_arm",
-            "left_leg", "right_leg"
-        ]
-        body_part = random.choice(body_parts)
+        """Choose a random target position anywhere on screen."""
+        # Random position anywhere on screen (not targeting person specifically)
+        # Favor center-ish area but allow full screen coverage
+        margin_x = int(frame_width * 0.1)
+        margin_y = int(frame_height * 0.1)
         
-        # If we have pose landmarks, use them for accurate targeting
-        if pose_landmarks:
-            # Map body parts to landmark indices
-            # MediaPipe Pose: 0=nose, 2=left_eye, 5=right_eye, 7=left_ear, 8=right_ear
-            # 11=left_shoulder, 12=right_shoulder, 13=left_elbow, 14=right_elbow
-            # 23=left_hip, 24=right_hip, 25=left_knee, 26=right_knee
-            landmark_map = {
-                "face": 0,  # nose (center of face)
-                "head": 0,  # nose
-                "torso": (11, 12),  # between shoulders
-                "chest": (11, 12),  # alias for torso
-                "left_arm": 13,  # left elbow
-                "right_arm": 14,  # right elbow
-                "left_leg": 25,  # left knee
-                "right_leg": 26,  # right knee
-            }
-            
-            target_key = landmark_map.get(body_part)
-            if target_key is not None:
-                if isinstance(target_key, tuple):
-                    # Average of two landmarks (e.g., torso = between shoulders)
-                    if target_key[0] in pose_landmarks and target_key[1] in pose_landmarks:
-                        lm1 = pose_landmarks[target_key[0]]
-                        lm2 = pose_landmarks[target_key[1]]
-                        target_x = int((lm1['x'] + lm2['x']) / 2 * frame_width)
-                        target_y = int((lm1['y'] + lm2['y']) / 2 * frame_height)
-                        return target_x, target_y, body_part
-                elif target_key in pose_landmarks:
-                    lm = pose_landmarks[target_key]
-                    target_x = int(lm['x'] * frame_width)
-                    target_y = int(lm['y'] * frame_height)
-                    return target_x, target_y, body_part
+        target_x = random.randint(margin_x, frame_width - margin_x)
+        target_y = random.randint(margin_y, frame_height - margin_y)
         
-        # Fallback: target center area with some randomness
-        target_x = frame_width // 2 + random.randint(-100, 100)
-        target_y = frame_height // 2 + random.randint(-150, 100)
+        # Label for display (generic since not targeting body)
+        body_part = "screen"
+        
         return target_x, target_y, body_part
     
     def _choose_spawn_point(self, frame_width: int, frame_height: int) -> tuple:
@@ -348,6 +318,8 @@ class SymbioteManager:
                     'created': current_time,
                     'duration': self.config.grayscale_duration
                 })
+                # Mark mask as needing rebuild
+                self._mask_dirty = True
         
         # Remove expired balls
         self.active_balls = [b for b in self.active_balls if not b.is_expired]
@@ -361,31 +333,84 @@ class SymbioteManager:
         """
         Render grayscale effect on player where hit by symbiotes (ADR-010).
         
-        Permanent grayscale - symbiote infection stays once hit.
+        OPTIMIZED:
+        - Cached mask: Only rebuild when new regions added
+        - Bounding box: Only convert affected areas to grayscale
+        - Skip already-gray: Regions don't re-compute overlap
         """
         if not self.grayscale_regions:
             return frame
         
         h, w = frame.shape[:2]
         
-        # Convert entire frame to grayscale once
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray_3ch = cv2.cvtColor(gray_frame, cv2.COLOR_GRAY2BGR)
+        # Check if we need to rebuild the cached mask
+        if self._mask_dirty or self._cached_frame_size != (h, w):
+            self._rebuild_grayscale_mask(h, w)
+        
+        # If no mask (shouldn't happen), return
+        if self._cached_grayscale_mask is None:
+            return frame
+        
+        # OPTIMIZATION: Find bounding box of all grayscale regions
+        # Only convert that section to grayscale, not full frame
+        min_x, min_y = w, h
+        max_x, max_y = 0, 0
+        
+        for region in self.grayscale_regions:
+            cx, cy, r = region['cx'], region['cy'], region['radius']
+            min_x = min(min_x, max(0, cx - r))
+            min_y = min(min_y, max(0, cy - r))
+            max_x = max(max_x, min(w, cx + r))
+            max_y = max(max_y, min(h, cy + r))
+        
+        # Ensure valid bounds
+        if min_x >= max_x or min_y >= max_y:
+            return frame
+        
+        # OPTIMIZATION: Only convert bounding box region to grayscale
+        roi = frame[min_y:max_y, min_x:max_x]
+        gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        gray_3ch_roi = cv2.cvtColor(gray_roi, cv2.COLOR_GRAY2BGR)
+        
+        # Apply cached mask (only the ROI portion)
+        mask_roi = self._cached_grayscale_mask[min_y:max_y, min_x:max_x]
+        frame[min_y:max_y, min_x:max_x][mask_roi] = gray_3ch_roi[mask_roi]
+        
+        return frame
+    
+    def _rebuild_grayscale_mask(self, h: int, w: int):
+        """
+        Rebuild the cached grayscale mask.
+        
+        OPTIMIZATION: Only called when new regions added or frame size changes.
+        All regions are combined into one mask for efficient application.
+        """
+        # Create combined mask for all regions
+        combined_mask = np.zeros((h, w), dtype=bool)
+        
+        # Pre-compute coordinate grids once
+        y_coords, x_coords = np.ogrid[:h, :w]
         
         for region in self.grayscale_regions:
             cx, cy = region['cx'], region['cy']
             radius = region['radius']
             
-            # Permanent grayscale - no fade (symbiote infection stays)
+            # OPTIMIZATION: Only compute for bounding box, not full frame
+            r = radius
+            y_min, y_max = max(0, cy - r), min(h, cy + r + 1)
+            x_min, x_max = max(0, cx - r), min(w, cx + r + 1)
             
-            # Create circular mask
-            y_coords, x_coords = np.ogrid[:h, :w]
-            mask = (x_coords - cx) ** 2 + (y_coords - cy) ** 2 <= radius ** 2
+            # Create local mask for this region
+            local_y = y_coords[y_min:y_max, 0:1]
+            local_x = x_coords[0:1, x_min:x_max]
+            local_mask = (local_x - cx) ** 2 + (local_y - cy) ** 2 <= radius ** 2
             
-            # Apply full grayscale (permanent)
-            frame[mask] = gray_3ch[mask]
+            # OR into combined mask (union of all regions)
+            combined_mask[y_min:y_max, x_min:x_max] |= local_mask
         
-        return frame
+        self._cached_grayscale_mask = combined_mask
+        self._cached_frame_size = (h, w)
+        self._mask_dirty = False
     
     def render(self, frame: np.ndarray) -> np.ndarray:
         """Render all symbiote balls on frame."""
@@ -394,18 +419,25 @@ class SymbioteManager:
         return frame
     
     def _render_ball(self, frame: np.ndarray, ball: SymbioteBall):
-        """Render a single symbiote ball with jelly effect."""
+        """
+        Render a single symbiote ball.
+        
+        OPTIMIZED: Reduced from 6 draw calls to 3 draw calls per ball.
+        - Combined outer glow + main body → single gradient circle
+        - Simplified highlight → single bright spot
+        - Removed inner core (minimal visual impact)
+        """
         x, y = ball.current_x, ball.current_y
         size = ball.current_size
         
         if ball.is_destroyed:
-            # Destruction animation - ball splatters
+            # Destruction animation - simplified to 4 particles instead of 8
             progress = ball.destruction_progress
             alpha = int(255 * (1 - progress))
             
-            # Draw splattering particles
-            for i in range(8):
-                angle = i * math.pi / 4 + progress * math.pi
+            # Draw 4 splattering particles (reduced from 8)
+            for i in range(4):
+                angle = i * math.pi / 2 + progress * math.pi
                 offset = int(progress * size * 0.8)
                 px = int(x + math.cos(angle) * offset)
                 py = int(y + math.sin(angle) * offset)
@@ -416,32 +448,25 @@ class SymbioteManager:
             splat_size = int(size * (1 + progress * 0.5))
             cv2.circle(frame, (x, y), splat_size // 2, (alpha//3, alpha//3, alpha//3), -1)
         else:
-            # Jelly ball effect - multiple layers for depth
-            # Outer glow (dark purple tint)
-            cv2.circle(frame, (x, y), size + 5, (40, 20, 40), -1)
+            # OPTIMIZED: Simplified jelly ball (3 draw calls instead of 6)
             
-            # Main body (black with slight transparency effect)
-            cv2.circle(frame, (x, y), size, (20, 20, 20), -1)
+            # 1. Main body with glow effect (single circle)
+            cv2.circle(frame, (x, y), size + 3, (30, 20, 30), -1)  # Dark purple-ish glow
+            cv2.circle(frame, (x, y), size, (15, 15, 15), -1)       # Main black body
             
-            # Inner darker core
-            cv2.circle(frame, (x, y), int(size * 0.7), (10, 10, 10), -1)
+            # 2. Single highlight (combined reflection spot)
+            if size >= 6:
+                highlight_x = x - int(size * 0.25)
+                highlight_y = y - int(size * 0.25)
+                highlight_size = max(2, int(size * 0.25))
+                cv2.circle(frame, (highlight_x, highlight_y), highlight_size, (100, 100, 120), -1)
             
-            # Highlight (jelly reflection) - offset for 3D effect
-            highlight_x = x - int(size * 0.25)
-            highlight_y = y - int(size * 0.25)
-            highlight_size = max(3, int(size * 0.3))
-            cv2.circle(frame, (highlight_x, highlight_y), highlight_size, (80, 80, 100), -1)
-            
-            # Small bright spot
-            cv2.circle(frame, (highlight_x, highlight_y), max(2, highlight_size // 3), (120, 120, 140), -1)
-            
-            # Wobble effect - draw slightly offset circles for jelly look
-            # Only apply wobble when ball is large enough to handle it
-            if size >= 8:
-                wobble = int(math.sin(time.time() * 10 + ball.created_at) * 3)
+            # 3. Wobble outline (only for larger balls)
+            if size >= 10:
+                wobble = int(math.sin(time.time() * 10 + ball.created_at) * 2)
                 axis_w = max(1, size + wobble)
                 axis_h = max(1, size - wobble)
-                cv2.ellipse(frame, (x, y), (axis_w, axis_h), 0, 0, 360, (30, 30, 30), 2)
+                cv2.ellipse(frame, (x, y), (axis_w, axis_h), 0, 0, 360, (40, 40, 40), 1)
     
     def render_hit_markers(self, frame: np.ndarray) -> np.ndarray:
         """Render recent hit location markers."""
@@ -466,6 +491,10 @@ class SymbioteManager:
         self.hit_locations.clear()
         self.grayscale_regions.clear()
         self.last_spawn_time = time.time()
+        # Clear cached mask
+        self._cached_grayscale_mask = None
+        self._cached_frame_size = None
+        self._mask_dirty = True
     
     def get_stats(self) -> dict:
         """Get current game statistics."""

@@ -42,7 +42,7 @@ class DepthConfig:
     wobble_decay: bool = True        # Amplitude decreases as approaching
     
     # === WEB SPREAD ===
-    web_spread_angle: float = 15.0   # Degrees from center line
+    web_spread_angle: float = 10.0   # Degrees from center line (narrower cone)
     web_line_count: int = 3          # Number of web lines (1, 3, 5, etc.)
     
     def z_from_progress(self, progress: float) -> float:

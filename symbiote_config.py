@@ -63,7 +63,7 @@ class SymbioteConfig:
 # === DIFFICULTY PRESETS ===
 
 EASY_SYMBIOTE = SymbioteConfig(
-    spawn_interval=3.0,
+    spawn_interval=2.7,    # 10% faster spawn rate (was 3.0)
     max_active=3,
     travel_time=4.0,
     start_size=1,      # ADR-010: Start at 1px for depth perception
@@ -73,7 +73,7 @@ EASY_SYMBIOTE = SymbioteConfig(
 )
 
 NORMAL_SYMBIOTE = SymbioteConfig(
-    spawn_interval=2.0,
+    spawn_interval=1.8,    # 10% faster spawn rate (was 2.0)
     max_active=5,
     travel_time=3.0,
     start_size=1,      # ADR-010: Start at 1px for depth perception
@@ -83,7 +83,7 @@ NORMAL_SYMBIOTE = SymbioteConfig(
 )
 
 HARD_SYMBIOTE = SymbioteConfig(
-    spawn_interval=1.5,
+    spawn_interval=1.35,   # 10% faster spawn rate (was 1.5)
     max_active=6,
     travel_time=2.5,
     start_size=1,      # ADR-010: Start at 1px for depth perception
@@ -93,7 +93,7 @@ HARD_SYMBIOTE = SymbioteConfig(
 )
 
 NIGHTMARE_SYMBIOTE = SymbioteConfig(
-    spawn_interval=1.0,
+    spawn_interval=0.9,    # 10% faster spawn rate (was 1.0)
     max_active=8,
     travel_time=2.0,
     start_size=1,      # ADR-010: Start at 1px for depth perception

@@ -13,7 +13,8 @@ Configuration:
     symbiote_config.py - Enemy ball settings
 
 Usage:
-    python web_shooter.py
+    python web_shooter.py           # Use original HandTracker (2 models)
+    python web_shooter.py --fast    # Use optimized HolisticTracker (1 model)
 
 Controls:
     q - Quit
@@ -27,18 +28,28 @@ Controls:
 import cv2
 import time
 import math
+import sys
 import numpy as np
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, List
 
-from hand_tracker import HandTracker
 from gesture_state_machine import GestureStateMachine, StateConfig, GestureState
 from ffnn_classifier.run_classifier import FFNNClassifier
 from config import ACTIVE_CONFIG, GameConfig
 from symbiote import SymbioteManager
 from symbiote_config import ACTIVE_SYMBIOTE_CONFIG
 from depth_config import ACTIVE_DEPTH_CONFIG
+
+# Tracker selection based on --fast flag
+USE_HOLISTIC = '--fast' in sys.argv
+
+if USE_HOLISTIC:
+    from holistic_tracker import HolisticTracker as Tracker, HolisticResults
+    print("🚀 Using OPTIMIZED HolisticTracker (single model)")
+else:
+    from hand_tracker import HandTracker as Tracker
+    print("📦 Using original HandTracker (dual models)")
 
 
 @dataclass
@@ -110,7 +121,7 @@ class WebEffectRenderer:
     def shoot_web(self, elbow_x: int, elbow_y: int, 
                    wrist_x: int, wrist_y: int,
                    frame_width: int, frame_height: int) -> WebShot:
-        """Create a new web shot with 3-line spread from elbow through wrist (ADR-010)."""
+        """Create a new web shot with 3-line spread from WRIST using elbow→wrist direction."""
         # Calculate direction vector from elbow to wrist
         dx = wrist_x - elbow_x
         dy = wrist_y - elbow_y
@@ -129,22 +140,22 @@ class WebEffectRenderer:
         left_angle = center_angle - spread_rad
         right_angle = center_angle + spread_rad
         
-        # Extend from elbow through wrist to frame boundary
+        # Extend from WRIST (not elbow) to frame boundary
         max_extend = max(frame_width, frame_height) * 2
         
-        # Calculate end points for all 3 lines (starting from elbow, extending through wrist)
-        center_end_x = int(elbow_x + math.cos(center_angle) * max_extend)
-        center_end_y = int(elbow_y + math.sin(center_angle) * max_extend)
+        # Calculate end points for all 3 lines (starting from WRIST)
+        center_end_x = int(wrist_x + math.cos(center_angle) * max_extend)
+        center_end_y = int(wrist_y + math.sin(center_angle) * max_extend)
         
-        left_end_x = int(elbow_x + math.cos(left_angle) * max_extend)
-        left_end_y = int(elbow_y + math.sin(left_angle) * max_extend)
+        left_end_x = int(wrist_x + math.cos(left_angle) * max_extend)
+        left_end_y = int(wrist_y + math.sin(left_angle) * max_extend)
         
-        right_end_x = int(elbow_x + math.cos(right_angle) * max_extend)
-        right_end_y = int(elbow_y + math.sin(right_angle) * max_extend)
+        right_end_x = int(wrist_x + math.cos(right_angle) * max_extend)
+        right_end_y = int(wrist_y + math.sin(right_angle) * max_extend)
         
         web = WebShot(
-            start_x=elbow_x,
-            start_y=elbow_y,
+            start_x=wrist_x,
+            start_y=wrist_y,
             center_end_x=center_end_x,
             center_end_y=center_end_y,
             left_end_x=left_end_x,
@@ -205,8 +216,12 @@ class SpiderManWebShooter:
         self.config = config
         self.depth_config = ACTIVE_DEPTH_CONFIG
         
-        # Initialize components
-        self.tracker = HandTracker(enable_pose=True)
+        # Initialize components - use selected tracker
+        if USE_HOLISTIC:
+            self.tracker = Tracker(pose_frame_skip=2)  # Skip pose every 2 frames
+        else:
+            self.tracker = Tracker(enable_pose=True)
+        
         self.classifier = FFNNClassifier(
             model_path=Path(__file__).parent / "ffnn_classifier" / "model.pt",
             threshold=config.detection_threshold
@@ -316,9 +331,12 @@ class SpiderManWebShooter:
         self.last_frame_size = (h, w)
         self.frame_count += 1
         
-        # Detect hands and pose
-        hand_results = self.tracker.detect(frame)
-        pose_results = self.tracker.detect_pose(frame)
+        # Detect hands and pose (optimized: single call for holistic tracker)
+        if USE_HOLISTIC:
+            hand_results, pose_results = self.tracker.detect_all(frame)
+        else:
+            hand_results = self.tracker.detect(frame)
+            pose_results = self.tracker.detect_pose(frame)
         
         # Convert PoseLandmarks dataclass to dict for symbiote targeting
         pose_landmarks_dict = None
