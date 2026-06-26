@@ -27,6 +27,8 @@ from symbiote_config import ACTIVE_SYMBIOTE_CONFIG
 from depth_config import ACTIVE_DEPTH_CONFIG
 from graphics_manager import GraphicsManager
 from web_renderer import WebEffectRenderer
+from score_config import Scoreboard, ACTIVE_SCORE_CONFIG
+from infection_system import InfectionManager
 
 # Tracker selection based on --fast flag
 USE_HOLISTIC = '--fast' in sys.argv
@@ -84,6 +86,8 @@ class BaseWebShooter(ABC):
         self.web_renderer = WebEffectRenderer(self.depth_config)
         self.symbiote_manager = SymbioteManager(ACTIVE_SYMBIOTE_CONFIG, self.depth_config)
         self.graphics = GraphicsManager()
+        self.scoreboard = Scoreboard(config=ACTIVE_SCORE_CONFIG)
+        self.infection_manager = InfectionManager(ACTIVE_SCORE_CONFIG)
         
         # State machine
         state_config = StateConfig(
@@ -224,6 +228,11 @@ class BaseWebShooter(ABC):
         hit_balls = self.symbiote_manager.update(w, h, pose_landmarks_dict)
         for ball in hit_balls:
             print(f"💀 HIT! Symbiote hit your {ball.hit_body_part}!")
+            # Add infection source at hit location
+            self.infection_manager.add_infection_source(ball.current_x, ball.current_y)
+        
+        # Update infection spread
+        self.infection_manager.update(w, h)
         
         # Check web collisions
         for web in self.web_renderer.active_webs:
@@ -239,11 +248,13 @@ class BaseWebShooter(ABC):
                     web.start_x, web.start_y, web.right_end_x, web.right_end_y, web.progress
                 )
             if destroyed_ball:
-                print(f"🕸️ THWACK! Ball destroyed! Total: {self.symbiote_manager.balls_destroyed}")
+                combo = self.scoreboard.record_destroy()
+                print(f"🕸️ THWACK! Ball destroyed! Combo: x{combo} Total: {self.symbiote_manager.balls_destroyed}")
                 # THWIP at collision position (ball location)
                 self.graphics.trigger_thwip(destroyed_ball.current_x, destroyed_ball.current_y)
         
         # Render game elements
+        frame = self.infection_manager.apply_infection(frame)  # BFS infection spread
         frame = self.symbiote_manager.render_grayscale_effect(frame)
         frame = self.symbiote_manager.render(frame)
         frame = self.symbiote_manager.render_hit_markers(frame)
@@ -337,6 +348,9 @@ class BaseWebShooter(ABC):
         cfg = self.config
         sym_cfg = ACTIVE_SYMBIOTE_CONFIG
         
+        # Start game tracking
+        self.scoreboard.start_game()
+        
         print("=" * 60)
         print(f"🕷️  {self.get_window_title()}")
         print("=" * 60)
@@ -360,10 +374,13 @@ class BaseWebShooter(ABC):
                 break
             elif key == ord('r'):
                 self.state_machine.reset()
+                self.infection_manager.reset()
                 print("🔄 State machine reset")
             elif key == ord('g'):
                 self.symbiote_manager.reset()
+                self.infection_manager.reset()
                 self.trigger_count = 0
+                self.scoreboard.start_game()  # Restart scoring
                 print("🎮 Game reset")
             elif key in [ord('+'), ord('=')]:
                 self.classifier.threshold = min(0.99, self.classifier.threshold + 0.05)
@@ -378,12 +395,29 @@ class BaseWebShooter(ABC):
         cap.release()
         cv2.destroyAllWindows()
         
-        # Print final stats
+        # Record final score
         stats = self.symbiote_manager.get_stats()
+        score = self.scoreboard.end_game(
+            player_name="Player",
+            webs_shot=self.trigger_count,
+            balls_destroyed=stats['balls_destroyed'],
+            hits_taken=stats['hits_taken'],
+            difficulty="normal"
+        )
+        
+        # Print final stats
         print("\n" + "=" * 60)
         print("📊 GAME OVER")
         print("=" * 60)
         print(f"  🕸️ Webs Shot: {self.trigger_count}")
         print(f"  💥 Symbiotes Destroyed: {stats['balls_destroyed']}")
         print(f"  💀 Hits Taken: {stats['hits_taken']}")
+        print(f"  🏆 Final Score: {score.final_score}")
         print("=" * 60)
+        
+        # Show leaderboard
+        leaderboard = self.scoreboard.get_leaderboard(5)
+        if leaderboard:
+            print("\n🏅 TOP 5 SCORES:")
+            for i, s in enumerate(leaderboard, 1):
+                print(f"  {i}. {s.final_score:,} pts - {s.balls_destroyed} kills, {s.hits_taken} hits")
