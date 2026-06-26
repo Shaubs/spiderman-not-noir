@@ -81,9 +81,7 @@ class GameScreenManager:
         "1. Show the SPIDER-MAN hand gesture",
         "   (thumb + index + pinky extended)",
         "",
-        "2. Move your hand UP to ARM the web",
-        "",
-        "3. Move your hand DOWN to SHOOT!",
+        "2. Flick, move UP, or HOLD to shoot!",
         "",
         "Destroy symbiotes before they hit the screen!",
     ]
@@ -95,7 +93,7 @@ class GameScreenManager:
         self.stats = GameStats()
         
         # State
-        self.state = "intro"  # intro, playing, game_over
+        self.state = "intro"  # intro, training, playing, game_over
         self.intro_start_time = time.time()
         self.game_over_time: Optional[float] = None
         self.final_score: Optional[GameScore] = None
@@ -104,8 +102,12 @@ class GameScreenManager:
         self.blink_state = True
         self.last_blink_time = time.time()
     
+    def start_training(self):
+        """Transition from intro to training."""
+        self.state = "training"
+    
     def start_game(self):
-        """Transition from intro to playing."""
+        """Transition to playing."""
         self.state = "playing"
         self.stats = GameStats()
         self.stats.game_start_time = time.time()
@@ -203,11 +205,11 @@ class GameScreenManager:
             self.last_blink_time = time.time()
         
         if self.blink_state:
-            start_text = ">>> PRESS SPACE TO START <<<"
-            start_size = cv2.getTextSize(start_text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)[0]
+            start_text = ">>> PRESS SPACE to TRAIN  |  PRESS ENTER to SKIP <<<"
+            start_size = cv2.getTextSize(start_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
             start_x = (w - start_size[0]) // 2
             cv2.putText(frame, start_text, (start_x, h - 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, self.GREEN, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.GREEN, 2)
         
         # Show high score if exists
         leaderboard = self.scoreboard.get_leaderboard(limit=1)
@@ -364,9 +366,15 @@ class GameScreenManager:
         return frame
     
     def render(self, frame: np.ndarray) -> np.ndarray:
-        """Render appropriate screen based on state."""
+        """Render appropriate screen based on state.
+        
+        Note: Training mode is rendered separately by TrainingMode class in game.py.
+        """
         if self.state == "intro":
             return self.render_intro(frame)
+        elif self.state == "training":
+            # Training overlay handled by TrainingMode in game.py
+            return frame
         elif self.state == "playing":
             return self.render_hud(frame)
         elif self.state == "game_over":
@@ -379,9 +387,14 @@ class GameScreenManager:
         """
         if key == ord(' '):  # Space bar
             if self.state == "intro":
-                self.start_game()
+                self.start_training()  # Go to training
             elif self.state == "game_over":
                 self.reset_to_intro()
+        elif key == 13:  # Enter key
+            if self.state == "intro":
+                self.start_game()  # Skip training, go directly to game
+            elif self.state == "training":
+                self.start_game()  # Done training, start game
         elif key == ord('q'):
             return False
         return True

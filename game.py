@@ -32,6 +32,7 @@ from depth_config import ACTIVE_DEPTH_CONFIG
 from web_renderer import WebEffectRenderer
 from graphics_manager import GraphicsManager
 from game_screen import GameScreenManager
+from training_mode import TrainingMode
 from config import ACTIVE_CONFIG
 
 # Create snapshots directory
@@ -78,6 +79,7 @@ def main():
     web_renderer = WebEffectRenderer(ACTIVE_DEPTH_CONFIG)
     graphics_manager = GraphicsManager()
     game_screen = GameScreenManager(FRAME_WIDTH, FRAME_HEIGHT)
+    training_mode = TrainingMode(FRAME_WIDTH, FRAME_HEIGHT)
     
     # State machine (same config as web_shooter_base.py)
     state_config = StateConfig(
@@ -157,10 +159,17 @@ def main():
         
         h, w = frame.shape[:2]
         
+        # Track state changes to reset training mode when entering training
+        prev_state = game_screen.state
+        
         # Handle key input
         key = cv2.waitKey(1) & 0xFF
         if not game_screen.handle_key(key):
             break
+        
+        # Reset training mode when entering training state
+        if game_screen.state == "training" and prev_state != "training":
+            training_mode.reset()
         
         if key == ord('s'):
             save_snapshot(frame, "spiderman")
@@ -175,6 +184,7 @@ def main():
             webs_shot = 0
             combo = 0
             state_machine.reset()
+            training_mode.reset()
             game_screen.start_game()
             print("🎮 Game reset")
         
@@ -290,6 +300,60 @@ def main():
             if hand_results.hand_landmarks:
                 for hand_landmarks in hand_results.hand_landmarks:
                     frame = graphics_manager.draw_spiderman_hand_filled(frame, hand_landmarks)
+        
+        elif game_screen.state == "training":
+            # Training mode - practice web shooting without symbiotes
+            current_time = time.time()
+            
+            # Detect Spider-Man gesture
+            spiderman_detected = False
+            wrist_y = None
+            confidence = 0.0
+            
+            if hand_results.hand_landmarks:
+                for idx, hand_landmarks in enumerate(hand_results.hand_landmarks):
+                    is_spiderman, conf = classifier.predict(hand_landmarks)
+                    if is_spiderman:
+                        spiderman_detected = True
+                        confidence = conf
+                        wrist_y = hand_landmarks[0].y
+                        
+                        # Store for web shooting
+                        last_hand_landmarks = hand_landmarks
+                        last_pose_landmarks = pose_results
+                        if hand_results.handedness and idx < len(hand_results.handedness):
+                            last_handedness = hand_results.handedness[idx][0].category_name
+                        break
+            
+            # Update state machine (this fires webs via callback)
+            old_webs = webs_shot
+            current_state = state_machine.update(spiderman_detected, wrist_y)
+            
+            # Track training webs using TrainingMode
+            if webs_shot > old_webs:
+                training_mode.increment_webs()
+            
+            # Render web effects (no symbiotes in training)
+            frame = web_renderer.update_and_render(frame)
+            frame = graphics_manager.render_thwip_effects(frame)
+            
+            # Draw hand
+            if hand_results.hand_landmarks:
+                for hand_landmarks in hand_results.hand_landmarks:
+                    frame = graphics_manager.draw_spiderman_hand_filled(frame, hand_landmarks)
+            
+            # State indicator
+            state_info = state_machine.get_state_info()
+            state_color = state_machine.get_state_color()
+            cv2.circle(frame, (w - 30, 70), 15, state_color, -1)
+            
+            # Confidence display
+            if spiderman_detected:
+                cv2.putText(frame, f"SPIDEY {confidence:.0%}", (w - 120, 100),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            
+            # Render training mode overlay
+            frame = training_mode.render(frame)
         
         elif game_screen.state == "game_over":
             # Keep grayscale effect visible
