@@ -35,6 +35,7 @@ from web_renderer import WebEffectRenderer
 from graphics_manager import GraphicsManager
 from game_screen import GameScreenManager
 from training_mode import TrainingMode
+from dr_strange_ring import DrStrangeRingManager
 from config import ACTIVE_CONFIG
 
 # Create snapshots directory
@@ -93,6 +94,7 @@ def main():
     graphics_manager = GraphicsManager()
     game_screen = GameScreenManager(FRAME_WIDTH, FRAME_HEIGHT)
     training_mode = TrainingMode(FRAME_WIDTH, FRAME_HEIGHT)
+    dr_strange_ring_manager = DrStrangeRingManager()  # Portal ring that spawns randomly
     
     # State machine (same config as web_shooter_base.py)
     state_config = StateConfig(
@@ -116,6 +118,7 @@ def main():
     last_handedness = None
     
     # Dr. Strange detection state
+    dr_strange_unlocked = False  # Dr. Strange powers only available after catching ring
     dr_strange_active = False
     dr_strange_display_until = 0
     dr_strange_hold_start = None  # When Dr. Strange gesture started
@@ -128,6 +131,14 @@ def main():
     DR_STRANGE_LOOP_THRESHOLD = 40  # Distance in pixels to consider loop closed
     DR_STRANGE_MIN_LOOP_POINTS = 20  # Minimum points needed before loop detection
     dr_strange_completed_portals = []  # List of completed portal circles [(center_x, center_y, radius, creation_time), ...]
+    
+    # Portal restoration state (when portal is completed)
+    portal_restoration_active = False
+    portal_restoration_start_time = 0
+    portal_restoration_center = (0, 0)
+    portal_restoration_progress = 0.0  # 0.0 to 1.0
+    PORTAL_RESTORATION_INTERVAL = 0.25  # seconds between restoration steps
+    last_restoration_step_time = 0
     
     def on_web_shoot():
         """Callback when web is shot."""
@@ -206,6 +217,11 @@ def main():
         elif key == ord('g') and game_screen.state == "playing":
             # Reset game
             symbiote_manager.reset()
+            dr_strange_ring_manager.reset()  # Reset portal ring
+            dr_strange_unlocked = False  # Reset Dr. Strange unlock
+            dr_strange_completed_portals = []  # Clear completed portals
+            portal_restoration_active = False  # Reset restoration state
+            portal_restoration_progress = 0.0
             web_renderer.active_webs.clear()
             graphics_manager.active_thwips.clear()
             webs_shot = 0
@@ -245,8 +261,8 @@ def main():
                             last_handedness = hand_results.handedness[idx][0].category_name
                         break
                     
-                    # Check Dr. Strange gesture if not Spider-Man
-                    if dr_strange_enabled and multi_classifier:
+                    # Check Dr. Strange gesture if not Spider-Man (only if unlocked by catching ring)
+                    if dr_strange_enabled and multi_classifier and dr_strange_unlocked:
                         is_dr_strange, dr_conf = multi_classifier.predict_dr_strange(hand_landmarks)
                         if is_dr_strange and dr_conf > 0.7:
                             dr_strange_detected = True
@@ -278,11 +294,36 @@ def main():
                 dr_strange_hand_landmarks = None
                 dr_strange_path = []  # Clear path
             
-            # Update state machine
-            current_state = state_machine.update(spiderman_detected, wrist_y)
+            # Update state machine (only if Dr. Strange not active - no webs during magic)
+            if not dr_strange_detected:
+                current_state = state_machine.update(spiderman_detected, wrist_y)
+            else:
+                current_state = state_machine.update(False, wrist_y)  # Disable trigger when Dr. Strange active
             
-            # Update symbiotes
-            hit_balls = symbiote_manager.update(w, h, None)
+            # Update symbiotes (stop spawning if portal restoration active)
+            if not portal_restoration_active:
+                hit_balls = symbiote_manager.update(w, h, None)
+            else:
+                # During restoration, don't spawn new symbiotes, just update existing
+                hit_balls = symbiote_manager.update_without_spawn(w, h)
+            
+            # Update Dr. Strange portal ring (spawns randomly)
+            dr_strange_ring_manager.update(w, h)
+            
+            # Check if hand can capture the portal ring (using landmarks 16 and 20)
+            if dr_strange_ring_manager.active_ring is not None:
+                # For capturing, use center between landmarks 16 (ring finger) and 20 (pinky)
+                if hand_results.hand_landmarks:
+                    for hand_landmarks in hand_results.hand_landmarks:
+                        lm16 = hand_landmarks[16]  # Ring finger tip
+                        lm20 = hand_landmarks[20]  # Pinky tip
+                        # Center between landmarks 16 and 20
+                        hand_x = int((lm16.x + lm20.x) / 2 * w)
+                        hand_y = int((lm16.y + lm20.y) / 2 * h)
+                        # Check capture with hand position (gesture not required to catch)
+                        if dr_strange_ring_manager.check_hand_capture(hand_x, hand_y, True):
+                            dr_strange_unlocked = True
+                            print("🌀 Portal ring captured! Dr. Strange powers UNLOCKED!")
             
             # Check web collisions (all 3 lines like web_shooter_base.py)
             for web in web_renderer.active_webs:
@@ -322,6 +363,36 @@ def main():
                     graphics_manager.trigger_thwip(destroyed.current_x, destroyed.current_y)
             
             # Apply grayscale effect (with BFS spreading)
+            # During portal restoration, gradually restore color from edges to center
+            if portal_restoration_active:
+                # Update restoration progress every 0.25 seconds
+                if current_time - last_restoration_step_time >= PORTAL_RESTORATION_INTERVAL:
+                    last_restoration_step_time = current_time
+                    
+                    # Shrink grayscale regions towards center
+                    symbiote_manager.shrink_grayscale_towards_point(
+                        portal_restoration_center[0], 
+                        portal_restoration_center[1],
+                        shrink_amount=30
+                    )
+                    
+                    current_coverage = symbiote_manager.get_grayscale_coverage(w, h)
+                    active_balls = len(symbiote_manager.active_balls)
+                    print(f"✨ Reality restoring... {int((1.0 - current_coverage) * 100)}% | Symbiotes remaining: {active_balls}")
+                
+                # Check if restoration complete:
+                # 1. ALL pixels are RGB (coverage = 0)
+                # 2. No grayscale regions left
+                # 3. ALL symbiotes have reached the portal center (no active balls)
+                current_coverage = symbiote_manager.get_grayscale_coverage(w, h)
+                all_symbiotes_absorbed = len(symbiote_manager.active_balls) == 0
+                
+                if current_coverage <= 0.0 and len(symbiote_manager.grayscale_regions) == 0 and all_symbiotes_absorbed:
+                    portal_restoration_active = False
+                    print("🏆 REALITY FULLY RESTORED! YOU WIN!")
+                    game_screen.trigger_win()
+                    game_screen.trigger_win()
+            
             frame = symbiote_manager.render_grayscale_effect(frame)
             
             # Calculate coverage
@@ -339,7 +410,15 @@ def main():
             # Render game elements (same order as web_shooter_base.py)
             frame = symbiote_manager.render(frame)
             frame = symbiote_manager.render_hit_markers(frame)
-            frame = web_renderer.update_and_render(frame)
+            frame = dr_strange_ring_manager.render(frame)  # Dr. Strange portal ring
+            
+            # Only render webs if Dr. Strange is NOT detected
+            if not dr_strange_detected:
+                frame = web_renderer.update_and_render(frame)
+            else:
+                # Clear webs when Dr. Strange is active (magic replaces webs)
+                web_renderer.active_webs.clear()
+            
             frame = graphics_manager.render_thwip_effects(frame)
             
             # Draw hand as glove
@@ -356,6 +435,14 @@ def main():
             if spiderman_detected:
                 cv2.putText(frame, f"SPIDEY {confidence:.0%}", (w - 120, 100),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            
+            # Dr. Strange unlock status indicator
+            if dr_strange_unlocked:
+                cv2.putText(frame, "DR. STRANGE: UNLOCKED", (10, 70),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
+            else:
+                cv2.putText(frame, "Catch the portal ring!", (10, 70),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
             
             # Dr. Strange activation display
             if dr_strange_active and current_time < dr_strange_display_until:
@@ -411,8 +498,20 @@ def main():
                         # Add to completed portals
                         dr_strange_completed_portals.append((portal_center_x, portal_center_y, portal_radius, current_time))
                         
-                        # Clear the path to start drawing a new one
+                        # Clear the path
                         dr_strange_path = []
+                        
+                        # Start portal restoration effect!
+                        portal_restoration_active = True
+                        portal_restoration_start_time = current_time
+                        portal_restoration_center = (portal_center_x, portal_center_y)
+                        portal_restoration_progress = 0.0
+                        last_restoration_step_time = current_time
+                        
+                        # Redirect all symbiotes to portal center
+                        symbiote_manager.redirect_balls_to_point(portal_center_x, portal_center_y)
+                        
+                        print("🏆 PORTAL COMPLETE! Restoring reality...")
                 
                 # Limit path length
                 if len(dr_strange_path) > DR_STRANGE_PATH_MAX_POINTS:

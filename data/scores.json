@@ -98,5 +98,85 @@
     "duration_seconds": 22.809147119522095,
     "timestamp": 1782499503.176073,
     "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 54,
+    "balls_destroyed": 9,
+    "hits_taken": 12,
+    "final_score": 30,
+    "duration_seconds": 45.297019243240356,
+    "timestamp": 1782522193.175444,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 33,
+    "balls_destroyed": 5,
+    "hits_taken": 16,
+    "final_score": 0,
+    "duration_seconds": 46.83380389213562,
+    "timestamp": 1782522606.921688,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 52,
+    "balls_destroyed": 13,
+    "hits_taken": 16,
+    "final_score": 240,
+    "duration_seconds": 65.6535496711731,
+    "timestamp": 1782523019.3717031,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 42,
+    "balls_destroyed": 11,
+    "hits_taken": 11,
+    "final_score": 340,
+    "duration_seconds": 49.2506148815155,
+    "timestamp": 1782523179.400121,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 43,
+    "balls_destroyed": 7,
+    "hits_taken": 32,
+    "final_score": 0,
+    "duration_seconds": 82.61469960212708,
+    "timestamp": 1782525921.9135501,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 30,
+    "balls_destroyed": 4,
+    "hits_taken": 35,
+    "final_score": 0,
+    "duration_seconds": 82.28349590301514,
+    "timestamp": 1782526041.2303832,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 20,
+    "balls_destroyed": 3,
+    "hits_taken": 8,
+    "final_score": 0,
+    "duration_seconds": 26.245033025741577,
+    "timestamp": 1782531290.1191611,
+    "difficulty": "normal"
+  },
+  {
+    "player_name": "Player",
+    "webs_shot": 7,
+    "balls_destroyed": 2,
+    "hits_taken": 11,
+    "final_score": 0,
+    "duration_seconds": 29.56293821334839,
+    "timestamp": 1782531394.893394,
+    "difficulty": "normal"
   }
 ]

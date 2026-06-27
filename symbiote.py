@@ -137,7 +137,7 @@ class SymbioteManager:
     """Manages symbiote balls - spawning, collision, rendering."""
     
     # BFS Infection spread settings (rotten oranges style)
-    INFECTION_SPREAD_INTERVAL = 0.5  # seconds between spread iterations
+    INFECTION_SPREAD_INTERVAL = 3.0  # seconds between spread iterations
     INFECTION_SPREAD_AMOUNT = 15     # pixels to spread per iteration
     
     def __init__(self, config: SymbioteConfig = ACTIVE_SYMBIOTE_CONFIG,
@@ -521,6 +521,79 @@ class SymbioteManager:
         # Clear cached mask
         self._cached_grayscale_mask = None
         self._cached_frame_size = None
+        self._mask_dirty = True
+    
+    def update_without_spawn(self, frame_width: int, frame_height: int) -> List[SymbioteBall]:
+        """
+        Update balls without spawning new ones (used during portal restoration).
+        
+        Returns:
+            List of balls that hit the player this frame
+        """
+        current_time = time.time()
+        
+        # NO spawning during restoration
+        
+        # Check for balls that hit player (or reached portal center)
+        hit_balls = []
+        for ball in self.active_balls:
+            if ball.has_reached_player and not ball.hit_player:
+                ball.hit_player = True
+                # During restoration, balls going to portal don't add grayscale
+                hit_balls.append(ball)
+        
+        # Remove expired balls
+        self.active_balls = [b for b in self.active_balls if not b.is_expired]
+        
+        # NO infection spread during restoration
+        
+        return hit_balls
+    
+    def redirect_balls_to_point(self, target_x: int, target_y: int):
+        """
+        Redirect all active balls to move towards a specific point (portal center).
+        """
+        for ball in self.active_balls:
+            if not ball.is_destroyed:
+                # Update the target position
+                ball.target_x = target_x
+                ball.target_y = target_y
+                # Reset timing so ball moves fresh towards new target
+                ball.created_at = time.time()
+                ball.travel_time = 1.5  # Quick travel to portal
+    
+    def shrink_grayscale_towards_point(self, center_x: int, center_y: int, shrink_amount: int = 20):
+        """
+        Shrink all grayscale regions towards a central point.
+        Regions closer to the center shrink faster.
+        """
+        regions_to_remove = []
+        
+        for region in self.grayscale_regions:
+            # Calculate distance from region center to portal center
+            dx = center_x - region['cx']
+            dy = center_y - region['cy']
+            distance = math.sqrt(dx * dx + dy * dy)
+            
+            # Move region center towards portal center
+            if distance > 10:
+                # Normalize and move
+                move_amount = min(30, distance * 0.2)
+                region['cx'] = int(region['cx'] + (dx / distance) * move_amount)
+                region['cy'] = int(region['cy'] + (dy / distance) * move_amount)
+            
+            # Shrink the radius
+            region['radius'] -= shrink_amount
+            
+            # Mark for removal if too small
+            if region['radius'] <= 5:
+                regions_to_remove.append(region)
+        
+        # Remove shrunken regions
+        for region in regions_to_remove:
+            self.grayscale_regions.remove(region)
+        
+        # Mark mask as dirty
         self._mask_dirty = True
     
     def get_stats(self) -> dict:

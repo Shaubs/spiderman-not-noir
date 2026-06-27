@@ -93,9 +93,10 @@ class GameScreenManager:
         self.stats = GameStats()
         
         # State
-        self.state = "intro"  # intro, training, playing, game_over
+        self.state = "intro"  # intro, training, playing, game_over, win
         self.intro_start_time = time.time()
         self.game_over_time: Optional[float] = None
+        self.win_time: Optional[float] = None
         self.final_score: Optional[GameScore] = None
         
         # Animation
@@ -117,7 +118,7 @@ class GameScreenManager:
     
     def end_game(self, player_name: str = "Player"):
         """Transition to game over."""
-        if self.state == "game_over":
+        if self.state == "game_over" or self.state == "win":
             return  # Already ended
         
         self.state = "game_over"
@@ -131,12 +132,29 @@ class GameScreenManager:
             hits_taken=self.stats.hits_taken,
         )
     
+    def trigger_win(self, player_name: str = "Player"):
+        """Transition to win state - player completed the portal!"""
+        if self.state == "game_over" or self.state == "win":
+            return  # Already ended
+        
+        self.state = "win"
+        self.win_time = time.time()
+        
+        # Record score with bonus for winning
+        self.final_score = self.scoreboard.end_game(
+            player_name=player_name,
+            webs_shot=self.stats.webs_shot,
+            balls_destroyed=self.stats.balls_destroyed,
+            hits_taken=self.stats.hits_taken,
+        )
+    
     def reset_to_intro(self):
         """Reset to intro screen."""
         self.state = "intro"
         self.intro_start_time = time.time()
         self.stats = GameStats()
         self.game_over_time = None
+        self.win_time = None
         self.final_score = None
     
     def update_stats(self, webs_shot: int, balls_destroyed: int, hits_taken: int,
@@ -367,6 +385,73 @@ class GameScreenManager:
         
         return frame
     
+    def render_win(self, frame: np.ndarray) -> np.ndarray:
+        """Render win screen."""
+        h, w = frame.shape[:2]
+        
+        # Add golden/orange overlay for victory
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, 0), (w, h), (0, 50, 100), -1)  # Dark orange tint
+        frame = cv2.addWeighted(overlay, 0.5, frame, 0.5, 0)
+        
+        # YOU WIN title
+        title = "YOU WIN!"
+        title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_DUPLEX, 3.0, 4)[0]
+        title_x = (w - title_size[0]) // 2
+        # Orange/gold color
+        cv2.putText(frame, title, (title_x + 3, 153),
+                    cv2.FONT_HERSHEY_DUPLEX, 3.0, (0, 100, 200), 6)  # Shadow
+        cv2.putText(frame, title, (title_x, 150),
+                    cv2.FONT_HERSHEY_DUPLEX, 3.0, (0, 200, 255), 4)  # Gold/orange
+        
+        # Subtitle
+        subtitle = "PORTAL COMPLETE - REALITY RESTORED!"
+        sub_size = cv2.getTextSize(subtitle, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)[0]
+        sub_x = (w - sub_size[0]) // 2
+        cv2.putText(frame, subtitle, (sub_x, 200),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, self.WHITE, 2)
+        
+        # Final stats
+        if self.final_score:
+            stats_y = 280
+            score = self.final_score
+            
+            stats = [
+                f"FINAL SCORE: {score.final_score}",
+                "",
+                f"Symbiotes Destroyed: {score.balls_destroyed}",
+                f"Hits Taken: {score.hits_taken}",
+                f"Webs Shot: {score.webs_shot}",
+                f"Time to Victory: {int(score.duration_seconds // 60)}:{int(score.duration_seconds % 60):02d}",
+                f"Max Combo: {self.stats.max_combo}",
+            ]
+            
+            for stat in stats:
+                if stat == "":
+                    stats_y += 15
+                else:
+                    stat_size = cv2.getTextSize(stat, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+                    stat_x = (w - stat_size[0]) // 2
+                    # FINAL SCORE in gold, others in WHITE
+                    color = (0, 200, 255) if "FINAL SCORE" in stat else self.WHITE
+                    cv2.putText(frame, stat, (stat_x, stats_y),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                    stats_y += 40
+        
+        # Blinking restart prompt
+        if time.time() - self.last_blink_time > 0.5:
+            self.blink_state = not self.blink_state
+            self.last_blink_time = time.time()
+        
+        if self.blink_state:
+            restart_text = ">>> PRESS SPACE TO PLAY AGAIN <<<"
+            restart_size = cv2.getTextSize(restart_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+            restart_x = (w - restart_size[0]) // 2
+            cv2.putText(frame, restart_text, (restart_x, h - 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+        
+        return frame
+    
     def render(self, frame: np.ndarray) -> np.ndarray:
         """Render appropriate screen based on state.
         
@@ -381,6 +466,8 @@ class GameScreenManager:
             return self.render_hud(frame)
         elif self.state == "game_over":
             return self.render_game_over(frame)
+        elif self.state == "win":
+            return self.render_win(frame)
         return frame
     
     def handle_key(self, key: int) -> bool:
@@ -390,7 +477,7 @@ class GameScreenManager:
         if key == ord(' '):  # Space bar
             if self.state == "intro":
                 self.start_training()  # Go to training
-            elif self.state == "game_over":
+            elif self.state == "game_over" or self.state == "win":
                 self.reset_to_intro()
         elif key == 13:  # Enter key
             if self.state == "intro":

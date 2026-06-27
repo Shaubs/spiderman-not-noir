@@ -67,7 +67,7 @@ EASY_SYMBIOTE = SymbioteConfig(
     max_active=3,
     travel_time=4.0,
     start_size=1,      # ADR-010: Start at 1px for depth perception
-    end_size=100,
+    end_size=95,       # Reduced by 5%
     hit_radius_multiplier=1.5,
     grayscale_duration=2.0,
 )
@@ -77,7 +77,7 @@ NORMAL_SYMBIOTE = SymbioteConfig(
     max_active=5,
     travel_time=3.0,
     start_size=1,      # ADR-010: Start at 1px for depth perception
-    end_size=80,
+    end_size=76,       # Reduced by 5%
     hit_radius_multiplier=1.2,
     grayscale_duration=3.0,
 )
@@ -87,7 +87,7 @@ HARD_SYMBIOTE = SymbioteConfig(
     max_active=6,
     travel_time=2.5,
     start_size=1,      # ADR-010: Start at 1px for depth perception
-    end_size=70,
+    end_size=67,       # Reduced by 5%
     hit_radius_multiplier=1.0,
     grayscale_duration=4.0,
 )
@@ -97,7 +97,7 @@ NIGHTMARE_SYMBIOTE = SymbioteConfig(
     max_active=8,
     travel_time=2.0,
     start_size=1,      # ADR-010: Start at 1px for depth perception
-    end_size=60,
+    end_size=57,       # Reduced by 5%
     hit_radius_multiplier=0.8,
     grayscale_duration=5.0,
 )
