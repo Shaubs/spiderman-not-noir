@@ -31,7 +31,7 @@ from enum import Enum
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from hand_tracker import HandTracker
+from tracking import HandTracker
 
 
 class GestureType(Enum):

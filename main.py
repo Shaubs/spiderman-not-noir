@@ -1,9 +1,7 @@
 import cv2
 import os
 from datetime import datetime
-from hand_tracker import HandTracker
-from gesture_detector import GestureDetector, GestureEvent
-from gesture_state_machine import GestureStateMachine, StateConfig, GestureState
+from tracking import HandTracker, GestureDetector, GestureEvent, GestureStateMachine, StateConfig, GestureState
 from gestures.spiderman import SpidermanGesture, ThumbsUpGesture
 
 # Create snapshots directory

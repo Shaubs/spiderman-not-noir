@@ -1,4 +1,4 @@
-from gesture_detector import Gesture
+from tracking.gesture_detector import Gesture
 from typing import Optional
 
 

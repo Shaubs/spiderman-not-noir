@@ -301,7 +301,7 @@ class MultiGestureClassifier:
 def demo():
     """Run a demo with webcam input."""
     import cv2
-    from hand_tracker import HandTracker
+    from tracking import HandTracker
     
     print("🔮 Multi-Gesture Classifier Demo")
     print("=" * 50)

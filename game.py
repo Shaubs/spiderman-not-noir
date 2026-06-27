@@ -24,20 +24,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from hand_tracker import HandTracker
-from gesture_state_machine import GestureStateMachine, StateConfig, GestureState
-from ffnn_classifier.run_classifier import FFNNClassifier
+from tracking import HandTracker, GestureStateMachine, StateConfig, GestureState
+from classifiers import FFNNClassifier
 from multi_gesture_classifier.run_classifier import MultiGestureClassifier
-from symbiote import SymbioteManager
-from symbiote_config import SymbioteConfig
-from depth_config import ACTIVE_DEPTH_CONFIG
-from web_renderer import WebEffectRenderer
-from graphics_manager import GraphicsManager
-from game_screen import GameScreenManager
-from training_mode import TrainingMode
-from dr_strange_ring import DrStrangeRingManager
-from warp_portal import apply_warp_to_completed_portals
-from config import ACTIVE_CONFIG
+from game_mechanics.enemies import SymbioteManager
+from config import ACTIVE_CONFIG, FIRE_COLORS, FRAME_WIDTH, FRAME_HEIGHT, SymbioteConfig, ACTIVE_DEPTH_CONFIG
+from rendering import WebEffectRenderer, GraphicsManager
+from game_mechanics.screens import GameScreenManager, TrainingMode
+from game_mechanics.dr_strange import DrStrangeRingManager, apply_warp_to_completed_portals
 
 # Create snapshots directory
 SNAPSHOT_DIR = "snapshots"
@@ -54,16 +48,15 @@ def save_snapshot(frame, prefix="snapshot"):
 
 
 def main():
-    # Frame settings
-    FRAME_WIDTH = 1280
-    FRAME_HEIGHT = 720
+    # Frame settings from config
+    # FRAME_WIDTH and FRAME_HEIGHT imported from config
     
     # Initialize tracker with pose
     tracker = HandTracker(enable_pose=True)
     
     # FFNN Classifier (same as web_shooter_base.py)
     classifier = FFNNClassifier(
-        model_path=Path(__file__).parent / "ffnn_classifier" / "model.pt",
+        model_path=Path(__file__).parent / "classifiers" / "ffnn" / "model.pt",
         threshold=ACTIVE_CONFIG.detection_threshold
     )
     
@@ -530,15 +523,7 @@ def main():
                 if len(dr_strange_path) > DR_STRANGE_PATH_MAX_POINTS:
                     dr_strange_path = dr_strange_path[-DR_STRANGE_PATH_MAX_POINTS:]
                 
-                # Fire/orange color palette (BGR format)
-                FIRE_COLORS = [
-                    (0, 50, 139),    # Dark red/brown
-                    (0, 69, 190),    # Deep orange
-                    (0, 100, 220),   # Orange
-                    (0, 140, 255),   # Bright orange
-                    (30, 180, 255),  # Yellow-orange
-                    (50, 200, 255),  # Light orange/yellow
-                ]
+                # Fire/orange color palette (BGR format) - from config/colors.py
                 
                 # Draw the traced path with fading fire effect
                 if len(dr_strange_path) > 1:
@@ -638,14 +623,7 @@ def main():
                 cv2.circle(frame, (x20, y20), 4, FIRE_COLORS[4], -1)
             
             # Draw completed portals (persist on screen)
-            FIRE_COLORS = [
-                (0, 50, 139),    # Dark red/brown
-                (0, 69, 190),    # Deep orange
-                (0, 100, 220),   # Orange
-                (0, 140, 255),   # Bright orange
-                (30, 180, 255),  # Yellow-orange
-                (50, 200, 255),  # Light orange/yellow
-            ]
+            # FIRE_COLORS imported from config/colors.py
             
             # Apply warp effect to pixels inside completed portals
             if dr_strange_completed_portals:
