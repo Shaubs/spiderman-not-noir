@@ -36,6 +36,7 @@ from graphics_manager import GraphicsManager
 from game_screen import GameScreenManager
 from training_mode import TrainingMode
 from dr_strange_ring import DrStrangeRingManager
+from warp_portal import apply_warp_to_completed_portals
 from config import ACTIVE_CONFIG
 
 # Create snapshots directory
@@ -137,8 +138,13 @@ def main():
     portal_restoration_start_time = 0
     portal_restoration_center = (0, 0)
     portal_restoration_progress = 0.0  # 0.0 to 1.0
-    PORTAL_RESTORATION_INTERVAL = 0.25  # seconds between restoration steps
+    PORTAL_RESTORATION_INTERVAL = 0.5  # seconds between restoration steps (slower)
     last_restoration_step_time = 0
+    
+    # Win delay state
+    win_pending = False
+    win_trigger_time = 0
+    WIN_DELAY = 1.5  # seconds to wait before showing win screen
     
     def on_web_shoot():
         """Callback when web is shot."""
@@ -369,11 +375,11 @@ def main():
                 if current_time - last_restoration_step_time >= PORTAL_RESTORATION_INTERVAL:
                     last_restoration_step_time = current_time
                     
-                    # Shrink grayscale regions towards center
+                    # Shrink grayscale regions towards center (slower - 15px per step)
                     symbiote_manager.shrink_grayscale_towards_point(
                         portal_restoration_center[0], 
                         portal_restoration_center[1],
-                        shrink_amount=30
+                        shrink_amount=15
                     )
                     
                     current_coverage = symbiote_manager.get_grayscale_coverage(w, h)
@@ -389,9 +395,16 @@ def main():
                 
                 if current_coverage <= 0.0 and len(symbiote_manager.grayscale_regions) == 0 and all_symbiotes_absorbed:
                     portal_restoration_active = False
-                    print("🏆 REALITY FULLY RESTORED! YOU WIN!")
-                    game_screen.trigger_win()
-                    game_screen.trigger_win()
+                    if not win_pending:
+                        win_pending = True
+                        win_trigger_time = current_time
+                        print("🏆 REALITY FULLY RESTORED! Victory in 1.5 seconds...")
+            
+            # Check for delayed win trigger
+            if win_pending and current_time - win_trigger_time >= WIN_DELAY:
+                win_pending = False
+                print("🎉 YOU WIN!")
+                game_screen.trigger_win()
             
             frame = symbiote_manager.render_grayscale_effect(frame)
             
@@ -633,6 +646,16 @@ def main():
                 (30, 180, 255),  # Yellow-orange
                 (50, 200, 255),  # Light orange/yellow
             ]
+            
+            # Apply warp effect to pixels inside completed portals
+            if dr_strange_completed_portals:
+                frame = apply_warp_to_completed_portals(
+                    frame,
+                    dr_strange_completed_portals,
+                    rotation_angle=dr_strange_circle_angle,
+                    warp_strength=0.6,
+                    spiral_factor=3.0
+                )
             
             for portal in dr_strange_completed_portals:
                 px, py, pr, pt = portal

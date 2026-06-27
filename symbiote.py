@@ -560,7 +560,7 @@ class SymbioteManager:
                 ball.target_y = target_y
                 # Reset timing so ball moves fresh towards new target
                 ball.created_at = time.time()
-                ball.travel_time = 1.5  # Quick travel to portal
+                ball.travel_time = 4.0  # Slower travel to portal
     
     def shrink_grayscale_towards_point(self, center_x: int, center_y: int, shrink_amount: int = 20):
         """
@@ -577,8 +577,8 @@ class SymbioteManager:
             
             # Move region center towards portal center
             if distance > 10:
-                # Normalize and move
-                move_amount = min(30, distance * 0.2)
+                # Normalize and move (slower - 10px max instead of 30)
+                move_amount = min(10, distance * 0.1)
                 region['cx'] = int(region['cx'] + (dx / distance) * move_amount)
                 region['cy'] = int(region['cy'] + (dy / distance) * move_amount)
             
